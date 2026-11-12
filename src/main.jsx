@@ -1,32 +1,24 @@
-import React, { useState, useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { attachBotController } from "./bots/controller.js";
-import { openTradeOffers, playerTradesAvailable } from "../shared/trades.js";
-import { ResourceCardDraft, ResourceOfferCards } from "./resource-card-draft.jsx";
 import {
   Anchor,
   ArrowRight,
-  ArrowLeft,
-  Check,
   ChevronDown,
   ChevronRight,
-  Clock3,
   Copy,
   Crown,
-  DoorOpen,
   Flag,
-  Globe2,
   Hammer,
   HelpCircle,
-  LockKeyhole,
   Map,
+  Maximize,
   MessageSquare,
+  Minimize,
   Mountain,
-  Plus,
   RefreshCw,
   ScrollText,
-  Send,
   Shield,
   Shuffle,
   Sparkles,
@@ -37,7 +29,6 @@ import {
   Waves,
   Wheat,
   X,
-  Volume2,
   Compass,
   Dices,
   CircleHelp,
@@ -48,23 +39,29 @@ import {
   Home,
   Building2,
   Trophy,
-  Bot,
 } from "lucide-react";
 import { Sheep } from "./sheep-icon.js";
 import { resourceName } from "../shared/resource-names.js";
 import { gameLogText } from "./game-log-text.js";
 import "./styles.css";
-import "./match-framing.css";
-import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
-import { useRollReminder } from "./roll-reminder.js";
-import { MatchResults } from "./match-results.jsx";
-import { KeyboardShortcuts, MatchShortcuts, shortcutProps } from "./match-shortcuts.jsx";
-import { DevelopmentTray, RobberTray, TableDialog, TableFeedback, developmentRestriction } from "./match-prompts.jsx";
-import { CityUpgradePreview } from "./build-preview.jsx";
-import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
-import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
+import { HomeScreen, LobbyHeader, WaitingRoom } from "./lobby.jsx";
+import { Chat } from "./chat.jsx";
 import { SoundToggle, useDecisionWarning, useSoundEffects } from "./sound.jsx";
 import { lobbySoundCues } from "./sound-cues.js";
+import { CardFace, MatchHands } from "./match-hand.jsx";
+import { Board } from "./match-board.jsx";
+import { DICE_THROW_DURATION, MatchDice, TurnClock } from "./match-hud.jsx";
+import { KeyboardShortcuts, MatchShortcuts, shortcutProps } from "./match-shortcuts.jsx";
+import { TradeOffers } from "./match-trade.jsx";
+import { ResourceCardDraft } from "./resource-card-draft.jsx";
+import { openTradeOffers } from "../shared/trades.js";
+import { FriendlyRobberHint } from "./robber-guide.jsx";
+import { CardDealLayer, PendingCardArrivals, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
+import { MatchResults } from "./match-results.jsx";
+import { DevelopmentTray, RobberTray, TableDialog, TableFeedback, developmentRestriction } from "./match-prompts.jsx";
+import "./match.css";
+import "./match-trade.css";
+import "./match-framing.css";
 
 const RES = ["wood", "brick", "wool", "wheat", "ore"];
 const META = {
@@ -80,19 +77,6 @@ const COSTS = {
   settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 },
   city: { wheat: 2, ore: 3 },
   development: { wool: 1, wheat: 1, ore: 1 },
-};
-const DEFAULTS = {
-  maxPlayers: 4,
-  extendedBoard: false,
-  victoryPoints: 10,
-  discardThreshold: 7,
-  hardHandLimit: 0,
-  turnSeconds: 120,
-  friendlyRobber: false,
-  balancedNumbers: true,
-  allowPlayerTrading: true,
-  pairedTurns: true,
-  seed: "",
 };
 function getToken() {
   let token = localStorage.getItem("catanToken");
@@ -110,72 +94,26 @@ function ResourceIcon({ resource, size = 16, ...rest }) {
   const Icon = META[resource]?.icon || Package;
   return <Icon size={size} {...rest} />;
 }
-function Brand({ compact = false }) {
-  return (
-    <div className={`brand ${compact ? "compact" : ""}`}>
-      <span className="brand-mark">
-        <Compass size={30} strokeWidth={1.3} />
-      </span>
-      <span>
-        <strong>LeCataNi</strong>
-      </span>
-    </div>
-  );
-}
-function Button({ children, variant = "", className = "", ...props }) {
-  return (
-    <button className={`button ${variant} ${className}`} {...props}>
-      {children}
-    </button>
-  );
-}
-function Toggle({ checked, onChange, label, description, disabled = false }) {
-  return (
-    <label className={`toggle-row ${disabled ? "disabled" : ""}`}>
-      <span>
-        <strong>{label}</strong>
-        {description && <small>{description}</small>}
-      </span>
-      <input
-        type="checkbox"
-        checked={!!checked}
-        onChange={(e) => onChange(e.target.checked)}
-        disabled={disabled}
-      />
-      <span className="switch" />
-    </label>
-  );
-}
 function Cost({ cost }) {
   return (
-    <span className="cost">
+    <span className="cost" aria-hidden="true">
       {Object.entries(cost).map(([r, n]) => (
         <span
           key={r}
           title={`${n} ${META[r].name}`}
           style={{ color: META[r].color }}
         >
-          <ResourceIcon resource={r} size={13} />
-          {n > 1 && n}
+          {Array.from({ length: n }, (_, i) => <ResourceIcon key={i} resource={r} size={13} />)}
         </span>
       ))}
     </span>
   );
 }
-function AtlasArt({ terrain, className = "" }) {
-  return (
-    <div
-      className={`atlas-art ${className}`}
-      style={{
-        backgroundColor: META[terrain]?.color,
-        backgroundPosition: `${(META[terrain]?.tile % 3) * 50}% ${META[terrain]?.tile >= 3 ? 100 : 0}%`,
-      }}
-    />
-  );
-}
+const costDescription = (type) => `Cost: ${Object.entries(COSTS[type]).map(([resource, count]) => `${count} ${META[resource].name}`).join(", ")}`;
 function App() {
   const [socket, setSocket] = useState(null),
     [connected, setConnected] = useState(false),
+    [botSupport, setBotSupport] = useState(null),
     [meId, setMeId] = useState(null),
     [directory, setDirectory] = useState([]),
     [lobby, setLobby] = useState(null),
@@ -185,12 +123,31 @@ function App() {
     [abandon, setAbandon] = useState(false),
     [busy, setBusy] = useState("");
   const [name, setName] = useState(localStorage.getItem("catanName") || "");
+  const [fullscreen, setFullscreen] = useState(false);
   const { enabled: soundEnabled, toggle: toggleSound, player: sound } = useSoundEffects();
   useDecisionWarning(connected ? lobby?.game : null, lobby?.meId, sound);
+  const joinedLobbyId = useRef(null);
   const cardDealStream = useRef(0);
+  const shell = useRef(null);
   const inMatch = !!lobby?.game;
   const canAbandon = inMatch && lobby.status === "playing" && lobby.game.phase !== "finished" && lobby.hostId === (meId || lobby.meId);
   useEffect(() => { if (!canAbandon) setAbandon(false); }, [canAbandon]);
+  useEffect(() => {
+    const update = () => {
+      const isFullscreen = !!shell.current && document.fullscreenElement === shell.current;
+      if (isFullscreen && !shell.current.classList.contains("match-shell")) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setFullscreen(isFullscreen);
+    };
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
+  useEffect(() => {
+    if (!inMatch && shell.current && document.fullscreenElement === shell.current) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, [inMatch]);
   useEffect(() => {
     const s = io({ auth: { token: getToken() } });
     let stopBots;
@@ -207,16 +164,24 @@ function App() {
       lastLobby = null;
       sound.stop();
       setConnected(false);
+      setBotSupport(null);
     });
     s.on("connect_error", () => setConnected(false));
-    s.on("session", (x) => setMeId(x.playerId));
+    s.on("session", (session) => {
+      setMeId(session.playerId);
+      setBotSupport(session.features?.localBots === true);
+    });
     s.on("directory", setDirectory);
     s.on("lobby", (l) => {
       const cues = lobbySoundCues(lastLobby, l);
       lastLobby = l;
-      setLobby(l && { ...l, cardDealStream: cardDealStream.current });
       if (l?.meId) setMeId(l.meId);
-      if (l) history.replaceState({}, "", `?lobby=${l.id}`);
+      const nextId = l?.id || null;
+      if (joinedLobbyId.current !== nextId) {
+        history.replaceState({}, "", nextId ? `?lobby=${nextId}` : "/");
+        joinedLobbyId.current = nextId;
+      }
+      setLobby(l && { ...l, cardDealStream: cardDealStream.current });
       sound.play(...cues);
     });
     s.on("chatMessage", (message) => {
@@ -279,8 +244,8 @@ function App() {
   };
   const leave = async () => {
     if (await command("leaveLobby")) {
-      setLobby(null);
       history.replaceState({}, "", "/");
+      setLobby(null);
     }
   };
   const copyInvite = async () => {
@@ -293,64 +258,32 @@ function App() {
       setNotice(`Lobby code: ${lobby.id}`);
     }
   };
+  const toggleFullscreen = async () => {
+    if (!shell.current) return;
+    try {
+      if (document.fullscreenElement === shell.current) await document.exitFullscreen();
+      else await shell.current.requestFullscreen({ navigationUI: "hide" });
+    } catch {
+      setError("Fullscreen is unavailable in this window.");
+    }
+  };
+  const fullscreenLabel = fullscreen ? "Exit fullscreen" : "Fullscreen";
   const showAbandon = abandon && canAbandon;
   const feedback = <TableFeedback disconnected={inMatch && !connected}
     botsPaused={connected && lobby?.status === "playing" && lobby.botsPaused} error={error} notice={notice}
     onDismiss={() => { setError(""); setNotice(""); }} />;
   return (
-    <>
-      <header className={`site-header ${lobby?.game ? "in-game" : ""}`}>
-        <a
-          href="/"
-          onClick={(e) => {
-            e.preventDefault();
-            if (!lobby) history.replaceState({}, "", "/");
-          }}
-          aria-label="LeCataNi home"
-        >
-          <Brand compact={!!lobby?.game} />
-        </a>
-        <nav>
-          {lobby ? (
-            <>
-              <span className="header-table">
-                <span className="status-dot" />
-                {lobby.name}
-                <span className="lobby-code">{lobby.id}</span>
-              </span>
-              <button onClick={copyInvite}>
-                <Copy size={15} /> Copy invite link
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="nav-active">Play online</span>
-              <button onClick={() => setHelp(true)}>How to play</button>
-            </>
-          )}
-        </nav>
-        <div className="header-end">
-          <span className={`connection ${connected ? "" : "offline"}`} role="status">
-            <span />
-            {connected ? "Connected" : "Connecting"}
-          </span>
-          {lobby ? (
-            <button className="icon-button" title="Leave lobby" onClick={leave}>
-              <LogOut size={18} />
-            </button>
-          ) : (
-            <span className="no-account">No account needed</span>
-          )}
-          <button
-            className="icon-button"
-            aria-label="Game guide"
-            onClick={() => setHelp(true)}
-          >
-            <CircleHelp size={20} />
-          </button>
-          <SoundToggle enabled={soundEnabled} onToggle={toggleSound} className="icon-button header-sound" />
-        </div>
-      </header>
+    <div ref={shell} className={inMatch ? "match-shell" : "front-shell"}>
+      {!inMatch && (
+        <LobbyHeader
+          connected={connected}
+          inLobby={!!lobby}
+          leaving={busy === "leaveLobby"}
+          onLeave={leave}
+          onHelp={() => setHelp(true)}
+          soundControl={<SoundToggle enabled={soundEnabled} onToggle={toggleSound} className="front-button quiet icon" />}
+        />
+      )}
       {lobby ? (
         lobby.game ? (
           <Game
@@ -362,11 +295,19 @@ function App() {
             onAbandon={canAbandon ? () => setAbandon(true) : undefined}
             onCopyInvite={copyInvite}
             onLeave={leave}
+            soundControl={<SoundToggle enabled={soundEnabled} onToggle={toggleSound} className="match-tool" />}
+            fullscreenControl={document.fullscreenEnabled && (
+              <button type="button" className="match-tool match-fullscreen" aria-label={fullscreenLabel} title={fullscreenLabel} onClick={toggleFullscreen}>
+                {fullscreen ? <Minimize size={17} aria-hidden="true" /> : <Maximize size={17} aria-hidden="true" />}
+                <span>{fullscreenLabel}</span>
+              </button>
+            )}
           />
         ) : (
           <WaitingRoom
             lobby={lobby}
             meId={meId || lobby.meId}
+            botSupport={botSupport}
             command={command}
             copyInvite={copyInvite}
             busy={busy}
@@ -394,1065 +335,7 @@ function App() {
           </div>
         </TableDialog>
       )}
-    </>
-  );
-}
-
-function HomeScreen({ name, setName, directory, command, busy, connected }) {
-  const [tab, setTab] = useState("create"),
-    [title, setTitle] = useState(""),
-    [privateLobby, setPrivateLobby] = useState(false),
-    [players, setPlayers] = useState(4),
-    [code, setCode] = useState(
-      new URLSearchParams(location.search).get("lobby") || "",
-    ),
-    [filter, setFilter] = useState("all");
-  useEffect(() => {
-    if (new URLSearchParams(location.search).get("lobby")) setTab("join");
-  }, []);
-  const submit = async (e) => {
-    e.preventDefault();
-    if (tab === "create")
-      await command("createLobby", {
-        name: title.trim() || `${name.trim()}'s lobby`,
-        playerName: name.trim(),
-        isPrivate: privateLobby,
-        settings: { maxPlayers: players, extendedBoard: players >= 5 },
-      });
-    else
-      await command("joinLobby", {
-        id: code.trim().toUpperCase(),
-        playerName: name.trim(),
-      });
-  };
-  const rooms = directory.filter(
-    (l) => filter === "all" || l.status === "waiting",
-  );
-  return (
-    <main className="home-page">
-      <section className="intro-line">
-        <div>
-          <h1>LeCataNi</h1>
-          <p>Online game for 2–6 players.</p>
-        </div>
-      </section>
-      <div className="home-layout">
-        <div className="home-main">
-          <section className="island-hero">
-            <img
-              src="/assets/island-hero.png"
-              alt="Painterly island with evergreen forests, golden fields and a coastal settlement"
-            />
-            <div className="hero-shade" />
-            <div className="hero-top">
-              <span className="hero-tag">2–6 PLAYERS</span>
-            </div>
-          </section>
-          <section className="tables-section">
-            <div className="section-title">
-              <div>
-                <h2>
-                  Public lobbies <span>{directory.length}</span>
-                </h2>
-              </div>
-              <div className="segmented small">
-                <button
-                  className={filter === "all" ? "selected" : ""}
-                  onClick={() => setFilter("all")}
-                >
-                  All
-                </button>
-                <button
-                  className={filter === "waiting" ? "selected" : ""}
-                  onClick={() => setFilter("waiting")}
-                >
-                  Waiting
-                </button>
-              </div>
-            </div>
-            <div className="table-list">
-              {rooms.length ? (
-                rooms.map((room) => (
-                  <button
-                    className="public-table"
-                    key={room.id}
-                    disabled={
-                      room.status !== "waiting" ||
-                      room.playerCount >= room.maxPlayers
-                    }
-                    onClick={() => {
-                      setTab("join");
-                      setCode(room.id);
-                    }}
-                  >
-                    <div className="table-illustration">
-                      <Map size={23} strokeWidth={1.2} />
-                    </div>
-                    <div className="table-info">
-                      <strong>{room.name}</strong>
-                      <span>
-                        Hosted by {room.hostName} <b>·</b>{" "}
-                        {room.settings?.extendedBoard
-                          ? "Expanded board"
-                          : "Classic board"}
-                      </span>
-                    </div>
-                    <span className="table-players">
-                      <Users size={15} />
-                      {room.playerCount}/{room.maxPlayers}
-                    </span>
-                    <span
-                      className={`table-status ${room.status === "waiting" ? "waiting" : ""}`}
-                    >
-                      {room.status === "waiting"
-                        ? room.playerCount >= room.maxPlayers
-                          ? "Full"
-                          : "Join lobby"
-                        : "In progress"}
-                      <ArrowRight size={15} />
-                    </span>
-                  </button>
-                ))
-              ) : (
-                <div className="empty-tables">
-                  <div>
-                    <Anchor size={27} strokeWidth={1.2} />
-                  </div>
-                  <strong>No public lobbies.</strong>
-                  <p>Create a lobby to start a game.</p>
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-        <aside className="join-card">
-          <div className="join-card-heading">
-            <h2>Play</h2>
-          </div>
-          <form onSubmit={submit}>
-            <label className="field-label">
-              Display name
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Display name"
-                maxLength={24}
-                required
-                autoComplete="nickname"
-              />
-            </label>
-            <div className="segmented">
-              <button
-                type="button"
-                className={tab === "create" ? "selected" : ""}
-                onClick={() => setTab("create")}
-              >
-                <Plus size={15} />
-                Create lobby
-              </button>
-              <button
-                type="button"
-                className={tab === "join" ? "selected" : ""}
-                onClick={() => setTab("join")}
-              >
-                <DoorOpen size={15} />
-                Join lobby
-              </button>
-            </div>
-            {tab === "create" ? (
-              <>
-                <label className="field-label">
-                  Lobby name <span>OPTIONAL</span>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Lobby name"
-                    maxLength={48}
-                  />
-                </label>
-                <div className="field-label">
-                  Players
-                  <div className="seat-selector">
-                    {[2, 3, 4, 5, 6].map((n) => (
-                      <button
-                        type="button"
-                        className={players === n ? "selected" : ""}
-                        key={n}
-                        onClick={() => setPlayers(n)}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <Toggle
-                  checked={privateLobby}
-                  onChange={setPrivateLobby}
-                  label="Private lobby"
-                  description="Only players with the invite code can join."
-                />
-                <div className="setup-note">
-                  <Map size={17} />
-                  <span>
-                    {players >= 5
-                      ? "Expanded board selected."
-                      : "Classic board selected."}{" "}
-                    Settings can be changed in the lobby.
-                  </span>
-                </div>
-                <Button className="full" disabled={!connected || !!busy}>
-                  <Plus size={18} />
-                  Create lobby
-                  <ArrowRight size={17} />
-                </Button>
-              </>
-            ) : (
-              <>
-                <label className="field-label">
-                  Invite code
-                  <input
-                    className="code-input"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder="ABCDEF"
-                    maxLength={12}
-                    required
-                  />
-                </label>
-                <div className="setup-note">
-                  <LockKeyhole size={17} />
-                  <span>Enter an invite code or select a public lobby.</span>
-                </div>
-                <Button className="full" disabled={!connected || !!busy}>
-                  <DoorOpen size={18} />
-                  Join lobby
-                  <ArrowRight size={17} />
-                </Button>
-              </>
-            )}
-          </form>
-        </aside>
-      </div>
-    </main>
-  );
-}
-
-function SettingsSelect({
-  label,
-  value,
-  options,
-  format = String,
-  disabled,
-  onChange,
-  help,
-}) {
-  const helpId = useId();
-  return (
-    <div>
-      <label className="field-label">
-        {label}
-        <select
-          value={value}
-          disabled={disabled}
-          aria-describedby={help ? helpId : undefined}
-          onChange={(e) => onChange(Number(e.target.value))}
-        >
-          {options.map((n) => (
-            <option key={n} value={n}>
-              {format(n)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {help && (
-        <p className="settings-help" id={helpId}>
-          {help}
-        </p>
-      )}
     </div>
-  );
-}
-
-function SettingsForm({ settings, onChange, disabled }) {
-  const s = { ...DEFAULTS, ...settings };
-  const change = (key, value) =>
-    onChange({
-      ...s,
-      [key]: value,
-      ...(key === "maxPlayers" ? { extendedBoard: value >= 5 } : {}),
-    });
-  return (
-    <div className="settings-form">
-      <div className="settings-grid">
-        <SettingsSelect
-          label="Player limit"
-          value={s.maxPlayers}
-          options={[2, 3, 4, 5, 6]}
-          disabled={disabled}
-          onChange={(n) => change("maxPlayers", n)}
-        />
-        <SettingsSelect
-          label="Points to win"
-          value={s.victoryPoints}
-          options={Array.from({ length: 18 }, (_, i) => i + 3)}
-          disabled={disabled}
-          onChange={(n) => change("victoryPoints", n)}
-        />
-        <SettingsSelect
-          label="Turn timer"
-          value={s.turnSeconds}
-          options={[0, 30, 60, 90, 120, 180, 300, 600]}
-          format={(seconds) =>
-            seconds === 0
-              ? "Off"
-              : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
-          }
-          disabled={disabled}
-          onChange={(n) => change("turnSeconds", n)}
-        />
-        <SettingsSelect
-          label="Discard threshold"
-          value={s.discardThreshold}
-          options={Array.from({ length: 28 }, (_, i) => i + 3)}
-          disabled={disabled}
-          onChange={(n) => change("discardThreshold", n)}
-        />
-      </div>
-      <Toggle
-        checked={s.extendedBoard}
-        onChange={(v) => change("extendedBoard", v)}
-        label="Expanded board"
-        description="30 hexes instead of 19."
-        disabled={disabled}
-      />
-      <details className="advanced-settings">
-        <summary>
-          Advanced settings
-          <ChevronDown size={16} aria-hidden="true" />
-        </summary>
-        <div className="advanced-settings-body">
-          <Toggle
-            checked={s.friendlyRobber}
-            onChange={(v) => change("friendlyRobber", v)}
-            label="Friendly robber"
-            description="Protect players with fewer than 3 visible points."
-            disabled={disabled}
-          />
-          <Toggle
-            checked={s.balancedNumbers}
-            onChange={(v) => change("balancedNumbers", v)}
-            label="Balanced numbers"
-            description="Prevent adjacent 6 and 8 tokens."
-            disabled={disabled}
-          />
-          <Toggle
-            checked={s.allowPlayerTrading}
-            onChange={(v) => change("allowPlayerTrading", v)}
-            label="Player trading"
-            disabled={disabled}
-          />
-          <Toggle
-            checked={s.pairedTurns}
-            onChange={(v) => change("pairedTurns", v)}
-            label="Paired turns for 5–6 players"
-            description="A second player gets an action phase after each turn."
-            disabled={disabled}
-          />
-          <div className="settings-grid">
-            <SettingsSelect
-              label="Hard hand limit"
-              value={s.hardHandLimit}
-              options={[0, 10, 15, 20, 25, 30, 40, 50]}
-              format={(n) => (n === 0 ? "Off" : String(n))}
-              help="Excess resource cards automatically return to the bank."
-              disabled={disabled}
-              onChange={(n) => change("hardHandLimit", n)}
-            />
-            <label className="field-label">
-              Board seed
-              <input
-                key={s.seed}
-                disabled={disabled}
-                defaultValue={s.seed || ""}
-                onBlur={(e) => {
-                  if (e.target.value !== s.seed) change("seed", e.target.value);
-                }}
-                placeholder="Random"
-                maxLength={40}
-              />
-            </label>
-          </div>
-        </div>
-      </details>
-    </div>
-  );
-}
-function Chat({ lobby, command, compact = false }) {
-  const [text, setText] = useState(""),
-    end = useRef(null);
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "nearest" });
-  }, [lobby.messages?.length]);
-  return (
-    <section className={`chat-panel ${compact ? "compact" : ""}`}>
-      <div className="panel-heading">
-        <MessageSquare size={17} />
-        <h3>Chat</h3>
-      </div>
-      <div className="chat-messages">
-        {!lobby.messages?.length && <p className="chat-empty">No messages.</p>}
-        {lobby.messages?.map((m, i) => (
-          <p key={m.id || i}>
-            <strong>{m.name}</strong>
-            <span>{m.text}</span>
-          </p>
-        ))}
-        <div ref={end} />
-      </div>
-      <form
-        className="chat-input"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (text.trim() && (await command("chat", { text: text.trim() })))
-            setText("");
-        }}
-      >
-        <input
-          aria-label="Message"
-          placeholder="Message…"
-          value={text}
-          maxLength={300}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button type="submit" aria-label="Send message" disabled={!text.trim()}>
-          <Send size={16} />
-        </button>
-      </form>
-    </section>
-  );
-}
-function WaitingRoom({ lobby, meId, command, copyInvite, busy }) {
-  const host = meId === lobby.hostId,
-    me = lobby.players.find((p) => p.id === meId),
-    allReady = lobby.players
-      .filter((p) => p.id !== lobby.hostId)
-      .every((p) => p.isBot || (p.ready && p.connected)),
-    canStart = host && lobby.players.length >= 2 && allReady;
-  return (
-    <main className="waiting-page">
-      <section className="lobby-banner">
-        <img src="/assets/island-hero.png" alt="Island coast" />
-        <div />
-        <span className="eyebrow">LOBBY</span>
-        <h1>{lobby.name}</h1>
-        <p>
-          <span>
-            {lobby.isPrivate ? <LockKeyhole size={14} /> : <Globe2 size={14} />}{" "}
-            {lobby.isPrivate ? "Private lobby" : "Public lobby"}
-          </span>
-          <span>·</span>
-          <span>
-            {lobby.players.length} of {lobby.settings.maxPlayers} players
-          </span>
-        </p>
-        <Button variant="light" onClick={copyInvite}>
-          <Copy size={16} />
-          Copy invite link<span className="invite-code">{lobby.id}</span>
-        </Button>
-      </section>
-      <div className="waiting-layout">
-        <section className="crew-panel">
-          <div className="section-title">
-            <div>
-              <h2>Players</h2>
-            </div>
-            <span className="count-badge">
-              {lobby.players.length}/{lobby.settings.maxPlayers}
-            </span>
-          </div>
-          <div className="crew-list">
-            {Array.from({ length: lobby.settings.maxPlayers }, (_, i) => {
-              const p = lobby.players[i];
-              return p ? (
-                <div className="crew-member" key={p.id}>
-                  <div className="avatar" style={{ "--player": p.color }}>
-                    {p.isBot ? <Bot size={23} /> : p.name.slice(0, 1).toUpperCase()}
-                    {!p.isBot && <span className={p.connected ? "online" : "offline"} />}
-                  </div>
-                  <div>
-                    <strong>
-                      {p.name} {p.id === meId && <small>(you)</small>}
-                    </strong>
-                    <span>
-                      {p.id === lobby.hostId ? (
-                        <>
-                          <Crown size={12} /> Host
-                        </>
-                      ) : p.isBot ? (
-                        `Bot · ${p.difficulty[0].toUpperCase()}${p.difficulty.slice(1)}`
-                      ) : !p.connected ? (
-                        "Reconnecting…"
-                      ) : p.ready ? (
-                        "Ready"
-                      ) : (
-                        "Not ready"
-                      )}
-                    </span>
-                  </div>
-                  {p.id === lobby.hostId ? (
-                    <Crown className="host-crown" size={19} />
-                  ) : p.ready ? (
-                    <Check className="ready-check" size={19} />
-                  ) : (
-                    <span className="waiting-dot" />
-                  )}
-                  {host && p.id !== meId && (
-                    <div className="crew-options">
-                      {p.isBot ? (
-                        <select className="bot-difficulty" aria-label={`Difficulty for ${p.name}`} value={p.difficulty}
-                          disabled={!!busy} onChange={(e) => command("configureBot", { playerId: p.id, difficulty: e.target.value })}>
-                          <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
-                        </select>
-                      ) : <button
-                        title={`Make ${p.name} host`}
-                        aria-label={`Make ${p.name} host`}
-                        onClick={() =>
-                          command("transferHost", { playerId: p.id })
-                        }
-                      >
-                        <Crown size={14} />
-                      </button>}
-                      <button
-                        title={`Remove ${p.name}`}
-                        aria-label={`Remove ${p.name}`}
-                        onClick={() =>
-                          command("kickPlayer", { playerId: p.id })
-                        }
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <button key={i} className="empty-seat" onClick={copyInvite}>
-                  <span>
-                    <Plus size={20} />
-                  </span>
-                  <div>
-                    <strong>Open slot</strong>
-                    <small>Click to copy the invite link</small>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          {host && lobby.players.length < lobby.settings.maxPlayers && (
-            <Button className="add-bot" variant="outline" disabled={!!busy} onClick={() => command("addBot", { difficulty: "normal" })}>
-              <Bot size={18} /> Add bot
-            </Button>
-          )}
-          {lobby.players.some(p => p.isBot) && <p className="bot-help">Bots run in the host’s browser. Keep it open during the game.</p>}
-          <div className="crew-start">
-            {host ? (
-              <>
-                <Button
-                  className="full"
-                  disabled={!canStart || !!busy}
-                  onClick={() => command("startGame")}
-                >
-                  <Flag size={18} />
-                  Start game
-                  <ArrowRight size={17} />
-                </Button>
-                <p>
-                  {lobby.players.length < 2
-                    ? "At least 2 players are required."
-                    : allReady
-                      ? "All players are ready."
-                      : "Waiting for players to be ready."}
-                </p>
-              </>
-            ) : (
-              <>
-                <Button
-                  className="full"
-                  variant={me?.ready ? "outline" : ""}
-                  onClick={() => command("setReady", { ready: !me?.ready })}
-                >
-                  <Check size={18} />
-                  {me?.ready ? "Not ready" : "Ready"}
-                </Button>
-                <p>The host will launch the game when everyone is ready.</p>
-              </>
-            )}
-          </div>
-          <Chat lobby={lobby} command={command} />
-        </section>
-        <section className="rules-panel">
-          <div className="settings-heading">
-            <h2>Game settings</h2>
-            {!host && <p>Only the host can edit.</p>}
-          </div>
-          {host && (
-            <div className="lobby-meta-settings">
-              <label className="field-label">
-                Lobby name
-                <input
-                  defaultValue={lobby.name}
-                  maxLength={48}
-                  onBlur={(e) => {
-                    if (e.target.value.trim() && e.target.value !== lobby.name)
-                      command("configureLobby", { name: e.target.value });
-                  }}
-                />
-              </label>
-              <Toggle
-                label="Private lobby"
-                checked={lobby.isPrivate}
-                onChange={(isPrivate) =>
-                  command("configureLobby", { isPrivate })
-                }
-              />
-            </div>
-          )}
-          <SettingsForm
-            settings={lobby.settings}
-            disabled={!host}
-            onChange={(settings) => command("configureLobby", { settings })}
-          />
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function Building({ type, color, x = 0, y = 0, ghost = false }) {
-  const size = type === "city" ? 46 : 36;
-  return (
-    <g
-      pointerEvents="none"
-      transform={`translate(${x},${y})`}
-      opacity={ghost ? 0.65 : 1}
-    >
-      <ellipse
-        cy="9"
-        rx={type === "city" ? 18 : 14}
-        ry="7"
-        fill={color}
-        stroke="#f7e9bd"
-        strokeWidth="1.8"
-      />
-      <svg
-        x={-size / 2}
-        y={-size + 15}
-        width={size}
-        height={size}
-        viewBox={`${type === "city" ? 724 : 0} 0 724 724`}
-      >
-        <image href="/assets/pieces-atlas.png" width="2172" height="724" />
-      </svg>
-    </g>
-  );
-}
-function Board({ game, meId, mode, previewCities, onAction }) {
-  const b = game.board,
-    vertices = useMemo(
-      () => Object.fromEntries(b.vertices.map((v) => [v.id, v])),
-      [b.vertices],
-    ),
-    colors = Object.fromEntries(game.players.map((p) => [p.id, p.color]));
-  const xs = b.hexes.map((h) => h.x),
-    ys = b.hexes.map((h) => h.y),
-    minX = Math.min(...xs) - 108,
-    minY = Math.min(...ys) - 110,
-    width = Math.max(...xs) - minX + 108,
-    height = Math.max(...ys) - minY + 110;
-  const active = game.activePlayerId === meId,
-    legal = game.legal || {},
-    settlementPhase = game.phase === "setupSettlement",
-    roadPhase = game.phase === "setupRoad" || game.roadBuildingRemaining > 0;
-  const settlements = new Set(
-      active && (settlementPhase || mode === "settlement")
-        ? legal.settlements
-        : [],
-    ),
-    roads = new Set(
-      active && (roadPhase || mode === "road") ? legal.roads : [],
-    ),
-    cities = new Set(active && (mode === "city" || previewCities) ? legal.cities : []);
-  const robber = robberPlacement(game, meId);
-  const portGroups = [];
-  const used = new Set();
-  for (const v of b.vertices) {
-    if (!v.port || used.has(v.id)) continue;
-    used.add(v.id);
-    const n = b.vertices.find(
-      (n) =>
-        n.port === v.port && !used.has(n.id) && v.neighborIds?.includes(n.id),
-    );
-    if (n) used.add(n.id);
-    const x = (v.x + (n?.x ?? v.x)) / 2,
-      y = (v.y + (n?.y ?? v.y)) / 2;
-    const cx = (Math.min(...xs) + Math.max(...xs)) / 2,
-      cy = (Math.min(...ys) + Math.max(...ys)) / 2;
-    const dx = x - cx,
-      dy = y - cy,
-      l = Math.hypot(dx, dy);
-    portGroups.push({
-      x: x + (dx / l) * 28,
-      y: y + (dy / l) * 28,
-      type: v.port,
-      key: v.id,
-    });
-  }
-  return (
-    <svg
-      className="game-board"
-      tabIndex={-1}
-      viewBox={`${minX} ${minY} ${width} ${height}`}
-      aria-label="Interactive Catan board"
-    >
-      <defs>
-        <filter id="tile-shadow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow
-            dx="0"
-            dy="5"
-            stdDeviation="3"
-            floodColor="#061f23"
-            floodOpacity=".5"
-          />
-        </filter>
-        <radialGradient id="sea">
-          <stop stopColor="#38716d" />
-          <stop offset="1" stopColor="#153b3c" />
-        </radialGradient>
-        {b.hexes.map((h) => (
-          <clipPath key={h.id} id={`hex-${h.id}`}>
-            <polygon
-              points={Array.from({ length: 6 }, (_, i) => {
-                const a = ((i * 60 - 30) * Math.PI) / 180;
-                return `${h.x + Math.cos(a) * 58.5},${h.y + Math.sin(a) * 58.5}`;
-              }).join(" ")}
-            />
-          </clipPath>
-        ))}
-      </defs>
-      <rect
-        x={minX}
-        y={minY}
-        width={width}
-        height={height}
-        rx="14"
-        fill="url(#sea)"
-      />
-      <g opacity=".09" fill="none" stroke="#cfe5ce" strokeWidth=".6">
-        {Array.from({ length: 18 }, (_, i) => (
-          <ellipse
-            key={i}
-            cx={minX + width / 2}
-            cy={minY + height / 2}
-            rx={100 + i * 23}
-            ry={80 + i * 21}
-          />
-        ))}
-      </g>
-      <g
-        className="map-compass"
-        transform={`translate(${minX + 42},${minY + 48})`}
-        fill="none"
-        stroke="#b9cbb4"
-      >
-        <circle r="22" opacity=".3" />
-        <path d="M0-31V31 M-31 0H31 M0-23 6 0 0 23-6 0Z" opacity=".5" />
-        <text
-          y="-36"
-          textAnchor="middle"
-          stroke="none"
-          fill="#bbcebb"
-          fontSize="9"
-        >
-          N
-        </text>
-      </g>
-      {b.hexes.map((h) => {
-        const points = Array.from({ length: 6 }, (_, i) => {
-          const a = ((i * 60 - 30) * Math.PI) / 180;
-          return `${h.x + Math.cos(a) * 60},${h.y + Math.sin(a) * 60}`;
-        }).join(" ");
-        const tile = META[h.terrain]?.tile || 0;
-        const state = robber?.state(h.id), selectable = state === "destination";
-        const hint = ROBBER_TILE_HINTS[state];
-        return (
-          <g
-            key={h.id}
-            className={selectable ? "hex-selectable" : ""}
-            onClick={() =>
-              selectable && onAction("moveRobber", { hexId: h.id })
-            }
-            role={selectable ? "button" : state ? "img" : undefined}
-            data-robber-state={state}
-            tabIndex={selectable ? 0 : undefined}
-            aria-label={[META[h.terrain]?.name, h.number || null, hint].filter(Boolean).join(", ")}
-            onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && selectable) {
-                e.preventDefault();
-                onAction("moveRobber", { hexId: h.id });
-              }
-            }}
-          >
-            {hint && !selectable && <title>{hint}</title>}
-            <polygon
-              points={points}
-              fill={META[h.terrain]?.color}
-              stroke="#d2bc83"
-              strokeWidth="3"
-              filter="url(#tile-shadow)"
-            />
-            <g clipPath={`url(#hex-${h.id})`}>
-              <svg
-                x={h.x - 60}
-                y={h.y - 60}
-                width="120"
-                height="120"
-                viewBox={`${(tile % 3) * 512} ${Math.floor(tile / 3) * 512} 512 512`}
-              >
-                <image
-                  href="/assets/terrain-atlas.png"
-                  width="1536"
-                  height="1024"
-                />
-              </svg>
-              <polygon points={points} fill="#173b2b" opacity=".07" />
-            </g>
-            <polygon points={points} className="deal-tile-cue" data-deal-tile={h.id} aria-hidden="true" />
-            <RobberHexMark state={state} points={points} x={h.x} y={h.y} />
-            {h.number && (
-              <g transform={`translate(${h.x},${h.y + 2})`}>
-                <circle r="18.5" fill="#0d2928" opacity=".3" cy="3" />
-                <circle
-                  r="18"
-                  fill="#f6ebce"
-                  stroke="#a7915f"
-                  strokeWidth="1.5"
-                />
-                <text
-                  textAnchor="middle"
-                  y="4"
-                  fontFamily="Georgia,serif"
-                  fontSize="22"
-                  fontWeight="bold"
-                  fill={[6, 8].includes(h.number) ? "#ac4d36" : "#333a32"}
-                >
-                  {h.number}
-                </text>
-                <text
-                  textAnchor="middle"
-                  y="13"
-                  fontSize="7"
-                  letterSpacing=".4"
-                  fill={[6, 8].includes(h.number) ? "#ac4d36" : "#71684e"}
-                >
-                  {"•".repeat(6 - Math.abs(7 - h.number))}
-                </text>
-              </g>
-            )}
-            {game.robberHexId === h.id && (
-              <g transform={`translate(${h.x + 22},${h.y - 19})`}>
-                <ellipse cy="17" rx="13" ry="5" fill="#092522" opacity=".5" />
-                <svg
-                  x="-23"
-                  y="-28"
-                  width="46"
-                  height="46"
-                  viewBox="1448 0 724 724"
-                >
-                  <image
-                    href="/assets/pieces-atlas.png"
-                    width="2172"
-                    height="724"
-                  />
-                </svg>
-              </g>
-            )}
-          </g>
-        );
-      })}
-      {portGroups.map((p) => (
-        <g key={p.key} transform={`translate(${p.x},${p.y})`}>
-          <rect
-            x="-22"
-            y="-11"
-            width="44"
-            height="23"
-            rx="9"
-            fill="#123737"
-            stroke="#a9b7a0"
-            strokeOpacity=".4"
-          />
-          <text
-            y="4"
-            textAnchor="middle"
-            fill="#f0e2bb"
-            fontSize="11"
-            fontWeight="600"
-          >
-            {p.type === "any"
-              ? "3:1"
-              : `${{ wood: "Wd", wool: "Wl", wheat: "Wh", brick: "Br", ore: "Or" }[p.type]} 2:1`}
-          </text>
-          <title>
-            {p.type === "any"
-              ? "Any resource 3:1"
-              : `${META[p.type]?.name} 2:1`}{" "}
-            port
-          </title>
-        </g>
-      ))}
-      {b.edges
-        .filter((e) => e.owner)
-        .map((e) => {
-          const a = vertices[e.a],
-            z = vertices[e.b];
-          return (
-            <g key={e.id}>
-              <line
-                x1={a.x}
-                y1={a.y + 2}
-                x2={z.x}
-                y2={z.y + 2}
-                stroke="#0b2525"
-                strokeWidth="11"
-                strokeLinecap="round"
-                opacity=".5"
-              />
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={z.x}
-                y2={z.y}
-                stroke="#ede0ba"
-                strokeWidth="10"
-                strokeLinecap="round"
-              />
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={z.x}
-                y2={z.y}
-                stroke={colors[e.owner]}
-                strokeWidth="7"
-                strokeLinecap="round"
-              />
-            </g>
-          );
-        })}
-      {b.edges
-        .filter((e) => roads.has(e.id))
-        .map((e) => {
-          const a = vertices[e.a],
-            z = vertices[e.b];
-          return (
-            <g
-              key={e.id}
-              className="road-target"
-              role="button"
-              tabIndex="0"
-              aria-label={`Build road ${e.id}`}
-              onClick={() => onAction("placeRoad", { edgeId: e.id })}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter") onAction("placeRoad", { edgeId: e.id });
-              }}
-            >
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={z.x}
-                y2={z.y}
-                stroke="#ffe2a0"
-                strokeWidth="5"
-                strokeDasharray="5 5"
-                strokeLinecap="round"
-              />
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={z.x}
-                y2={z.y}
-                stroke="transparent"
-                strokeWidth="22"
-              />
-              <circle cx={(a.x + z.x) / 2} cy={(a.y + z.y) / 2} r="11" fill="transparent" />
-            </g>
-          );
-        })}
-      {b.vertices.filter((v) => v.building).map((v) => {
-        const selectable = cities.has(v.id);
-        const choose = () => onAction("upgradeCity", { vertexId: v.id });
-        const renderPiece = (type) => (
-          <Building type={type} color={colors[v.building.owner]} x={v.x} y={v.y} />
-        );
-        if (selectable && previewCities) {
-          return <CityUpgradePreview key={v.id} x={v.x} y={v.y} onBuild={choose} renderPiece={renderPiece} />;
-        }
-        return (
-          <g
-            key={v.id}
-            role={selectable ? "button" : undefined}
-            tabIndex={selectable ? 0 : undefined}
-            className={selectable ? "city-target" : ""}
-            aria-label={selectable ? `Upgrade settlement ${v.id}` : undefined}
-            onClick={selectable ? choose : undefined}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && selectable) choose();
-            }}
-          >
-            {selectable && (
-              <circle
-                cx={v.x}
-                cy={v.y}
-                r="21"
-                fill="#f5d58b"
-                fillOpacity=".3"
-                stroke="#ffe3a5"
-                strokeDasharray="4 3"
-              />
-            )}
-            {renderPiece(v.building.type)}
-          </g>
-        );
-      })}
-      {b.vertices
-        .filter((v) => settlements.has(v.id))
-        .map((v) => (
-          <g
-            key={v.id}
-            className="settlement-target"
-            role="button"
-            tabIndex="0"
-            aria-label={`Build settlement ${v.id}`}
-            onClick={() => onAction("placeSettlement", { vertexId: v.id })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter")
-                onAction("placeSettlement", { vertexId: v.id });
-            }}
-          >
-            <circle
-              cx={v.x}
-              cy={v.y}
-              r="10"
-              fill="#fff0bd"
-              stroke="#8b6c35"
-              strokeWidth="2"
-            />
-            <path
-              d={`M${v.x - 3.5},${v.y}h7 M${v.x},${v.y - 3.5}v7`}
-              stroke="#5c704e"
-              strokeWidth="1.5"
-            />
-          </g>
-        ))}
-    </svg>
   );
 }
 
@@ -1460,50 +343,43 @@ const DEV_META = {
   knight: {
     name: "Knight",
     icon: Shield,
+    tile: 0,
+    color: "#454e54",
     description:
       "Move the robber and steal a random resource if an adjacent opponent has cards. Counts toward Largest Army.",
   },
   victoryPoint: {
     name: "Victory point",
     icon: Trophy,
+    tile: 1,
+    color: "#2b5c85",
     description:
       "Adds one hidden victory point to your score as soon as you draw it.",
   },
   roadBuilding: {
     name: "Road building",
     icon: Route,
+    tile: 2,
+    color: "#775d3a",
     description:
       "Place up to two roads for free.",
   },
   invention: {
     name: "Invention",
     icon: Sparkles,
+    tile: 3,
+    color: "#286459",
     description: "Take two resources from the bank.",
   },
   monopoly: {
     name: "Monopoly",
     icon: Crown,
+    tile: 4,
+    color: "#80601a",
     description:
       "Take all cards of one resource from the other players.",
   },
 };
-function Dice({ value }) {
-  const positions = {
-    1: [4],
-    2: [0, 8],
-    3: [0, 4, 8],
-    4: [0, 2, 6, 8],
-    5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
-  };
-  return (
-    <span className="die" aria-label={`Die ${value || "not rolled"}`}>
-      {Array.from({ length: 9 }, (_, i) => (
-        <i className={positions[value]?.includes(i) ? "dot" : ""} key={i} />
-      ))}
-    </span>
-  );
-}
 function ResourceSummary({ resources }) {
   return (
     <span className="resource-summary">
@@ -1518,33 +394,39 @@ function ResourceSummary({ resources }) {
 }
 const developmentTrayId = "match-development-tray";
 
-function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onLeave }) {
+function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onLeave, soundControl, fullscreenControl }) {
   const game = lobby.game,
     me = game.players.find((p) => p.id === meId),
     active = game.players.find((p) => p.id === game.activePlayerId),
     myTurn = meId === game.activePlayerId;
   const [mode, setMode] = useState(null),
-    [trade, setTrade] = useState(null),
+    [trade, setTrade] = useState(false),
     [devId, setDevId] = useState(null),
     [sidebar, setSidebar] = useState("activity"),
     [chatFocus, setChatFocus] = useState(0),
-    [now, setNow] = useState(Date.now());
-  const devTrigger = useRef(null), matchPage = useRef(null);
+    [drawer, setDrawer] = useState(null),
+    [compact, setCompact] = useState(() => matchMedia("(max-width: 950px)").matches),
+    [activityPreference, setActivityPreference] = useState(null);
+  const tradeTrigger = useRef(null), devTrigger = useRef(null), matchPage = useRef(null);
   useLayoutEffect(() => {
     if (chatFocus) matchPage.current?.querySelector(".chat-input input")?.focus({ preventScroll: true });
   }, [chatFocus]);
-  const remindRoll = useRollReminder(myTurn && game.phase === "roll" && !game.roadBuildingRemaining && !busy);
   const deals = useCardDeals({ matchId: lobby.matchId || lobby.id, stream: lobby.cardDealStream,
-    game, me: game.phase === "finished" ? null : me });
+    game, me: game.phase === "finished" ? null : me, rollDelay: DICE_THROW_DURATION });
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const media = matchMedia("(max-width: 950px)");
+    const change = () => { setCompact(media.matches); setDrawer(null); };
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
   }, []);
   useEffect(() => {
     setMode(null);
-    setTrade(null);
+    setTrade(false);
     setDevId(null);
   }, [game.phase, game.activePlayerId, game.roadBuildingRemaining, game.turn]);
+  const discardCount = game.phase === "discard" ? game.discardRequired?.[meId] || 0 : 0;
+  const blockingPrompt = game.phase === "finished" || discardCount > 0 ||
+    (myTurn && (["robber", "steal"].includes(game.phase) || game.roadBuildingRemaining > 0));
   if (!me)
     return (
       <main className="loading-state">
@@ -1553,7 +435,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
       </main>
     );
   if (game.phase === "finished")
-    return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave }} Board={Board} resourceMeta={META} />;
+    return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave, soundControl, fullscreenControl }} Board={Board} resourceMeta={META} />;
   const action = async (type, payload = {}) => {
     if (type !== "playDevelopment") setDevId(null);
     const result = await command("gameAction", { type, ...payload });
@@ -1565,12 +447,37 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
     return result;
   };
   const canAct = myTurn && game.phase === "action" && !game.roadBuildingRemaining;
+  const trading = trade && canAct;
+  const canRoll = myTurn && game.phase === "roll" && !game.roadBuildingRemaining && !busy;
+  const rollId = game.dice && game.log?.findLast((entry) => entry.cue === "dice" || entry.cue === "diceSeven")?.seq;
+  const activityOpen = (activityPreference ?? !compact) && drawer !== "players";
+  const dev = !blockingPrompt && me.development?.find((card) => card.id === devId);
+  const afford = (type) => Object.entries(COSTS[type]).every(([r, n]) => (me.resources?.[r] || 0) >= n);
+  const canBuild = {
+    road: canAct && afford("road") && !!game.legal?.roads?.length,
+    settlement: canAct && afford("settlement") && !!game.legal?.settlements?.length,
+    city: canAct && afford("city") && !!game.legal?.cities?.length,
+  };
+  const selectedBuild = canBuild[mode] ? mode : null;
+  const phaseText =
+    game.phase === "setupSettlement"
+      ? "Choose a settlement location."
+      : game.phase === "setupRoad"
+        ? "Place a road beside your new settlement."
+        : game.roadBuildingRemaining
+          ? `Place ${game.roadBuildingRemaining} free road${game.roadBuildingRemaining === 1 ? "" : "s"}.`
+          : game.phase === "roll"
+            ? "Roll the dice."
+            : game.phase === "discard"
+              ? discardCount ? null : "Waiting for players to return resources."
+              : game.phase === "robber"
+                ? "Move the robber to a highlighted tile."
+                : selectedBuild
+                  ? `Choose a highlighted ${selectedBuild === "road" ? "edge" : "location"} for your ${selectedBuild}.`
+                  : null;
+  const offers = openTradeOffers(game);
   const openTrade = () => { setDevId(null); setMode(null); setTrade(true); };
-  const closeTrade = () => setTrade(false);
-  const discardCount = game.phase === "discard" ? game.discardRequired?.[meId] || 0 : 0;
-  const blockingPrompt = game.phase === "finished" || discardCount > 0 ||
-    (myTurn && (["robber", "steal"].includes(game.phase) || game.roadBuildingRemaining > 0));
-  const dev = !blockingPrompt && me.development?.find(card => card.id === devId);
+  const closeTrade = () => { setTrade(false); tradeTrigger.current?.focus(); };
   const closeDevelopment = () => { setDevId(null); devTrigger.current?.focus({ preventScroll: true }); };
   const inspectDevelopment = (id, trigger) => {
     if (id === devId) return closeDevelopment();
@@ -1588,158 +495,139 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
       }
     }
   };
-  const afford = (type) =>
-      Object.entries(COSTS[type]).every(
-        ([r, n]) => (me.resources?.[r] || 0) >= n,
-      ),
-    seconds = game.deadline
-      ? Math.max(0, Math.ceil((game.deadline - now) / 1000))
-      : null;
-  const phaseText =
-    game.phase === "setupSettlement"
-      ? "Choose a settlement location."
-      : game.phase === "setupRoad"
-        ? "Place a road beside your new settlement."
-        : game.roadBuildingRemaining
-          ? `Place ${game.roadBuildingRemaining} free road${game.roadBuildingRemaining === 1 ? "" : "s"}.`
-          : game.phase === "roll"
-            ? "Roll the dice."
-            : game.phase === "discard"
-              ? discardCount ? null : "Waiting for players to return resources."
-              : game.phase === "robber"
-                ? "Move the robber to a highlighted tile."
-                : game.phase === "steal"
-                  ? null
-                  : mode
-                    ? `Choose a highlighted ${mode === "road" ? "edge" : "location"} for your ${mode}.`
-                    : "Trade or build, then end your turn.";
-  const dealtDevelopment = me.development?.filter(card => !deals.pending.has(card.id)) || [];
-  const offered = game.tradeOffers?.[0] ?? game.tradeOffer,
-    offerOwner = game.players.find((p) => p.id === offered?.from),
-    canAccept =
-      offered &&
-      me.id !== offered.from &&
-      playerTradesAvailable(game) &&
-      RES.every((r) => (me.resources?.[r] || 0) >= (offered.want?.[r] || 0));
   const openChat = () => {
+    setDrawer(null);
+    setActivityPreference(true);
     setSidebar("chat");
     setChatFocus((request) => request + 1);
   };
   const dismiss = () => {
-    if (trade && canAct) closeTrade();
-    else if (mode) setMode(null);
+    if (trading) closeTrade();
+    else if (selectedBuild) setMode(null);
+    else if (drawer) setDrawer(null);
+    else if (compact && activityOpen) setActivityPreference(false);
     else return false;
     return true;
   };
   return (
-    <main className="game-page" ref={matchPage}>
+    <main className="match-page" ref={matchPage}>
       <MatchShortcuts scope={matchPage} onChat={openChat} onEscape={dismiss} />
-      <div className="game-topline">
-        <div>
-          <span className="eyebrow">
-            {game.settings.extendedBoard ? "EXPANDED BOARD" : "CLASSIC BOARD"}
-          </span>
-          <span className="game-round">
-            Turn {game.turn || 1}
-            {game.pairedPlayer ? " · Paired action phase" : ""}
-          </span>
-        </div>
-        <div className="game-top-meta">
-          <span>
-            <Trophy size={15} />
-            {game.settings.victoryPoints} to win
-          </span>
-          <span>
-            <Package size={15} />
-            {game.settings.discardThreshold} safe cards
-          </span>
-          <button className="text-button" {...shortcutProps("help")} onClick={onHelp}>
-            <CircleHelp size={15} />
-            Rules
+      <header className="match-toolbar">
+        <div className="match-identity">
+          <img src="/assets/lobby-crest.svg" alt="" width="28" height="32" />
+          <strong title={lobby.name}>{lobby.name}</strong>
+          <button type="button" className="match-tool match-invite" aria-label="Copy invite link" title="Copy invite link" onClick={onCopyInvite}>
+            <Copy size={15} aria-hidden="true" />
           </button>
-          {onAbandon && (
-            <button
-              className="text-button"
-              aria-label="End current match"
-              onClick={onAbandon}
-            >
-              <LogOut size={15} />
-              End match
-            </button>
-          )}
         </div>
-      </div>
-      <div className="game-layout">
-        <aside className="players-panel">
+        <div className={`turn-banner ${myTurn ? "your-turn" : ""}`}>
+          <span className="turn-avatar" style={{ background: active?.color }} aria-hidden="true">{active?.name.slice(0, 1)}</span>
+          <div className="turn-state">
+            <strong>{myTurn ? "Your turn" : `${active?.name || "Player"}’s turn`}</strong>
+            {phaseText && (myTurn || game.phase === "discard") && <span>{phaseText}</span>}
+            {myTurn && game.phase === "robber" && game.settings.friendlyRobber && <FriendlyRobberHint />}
+          </div>
+          {game.deadline && <TurnClock key={game.deadline} deadline={game.deadline} limit={game.settings.turnSeconds} />}
+          {selectedBuild && <button type="button" className="match-command" aria-label="Cancel build selection" onClick={() => setMode(null)}><X size={17} aria-hidden="true" /></button>}
+        </div>
+        <div className="match-top-controls">
+          <div className="match-status">
+            <span>Turn {game.turn || 1}</span>
+            <span className="match-target"><Trophy size={14} aria-hidden="true" /> {game.settings.victoryPoints} to win</span>
+            {game.pairedPlayer && <span className="paired-status">Paired turn</span>}
+          </div>
+          <div className="match-tools">
+            <button type="button" className="match-tool match-drawer-button" aria-label="Players panel" title="Players" aria-expanded={drawer === "players"} aria-controls="match-players" onClick={() => setDrawer(drawer === "players" ? null : "players")}>
+              <Users size={17} aria-hidden="true" />
+            </button>
+            <button type="button" className="match-tool" aria-label="Game log and chat" title="Game log and chat" aria-expanded={activityOpen} aria-controls="match-activity" onClick={() => { setDrawer(null); setActivityPreference(!activityOpen); }}>
+              <MessageSquare size={16} aria-hidden="true" />
+            </button>
+            {fullscreenControl}
+            {soundControl}
+            <button type="button" className="match-tool" aria-label="Game guide" title="Game guide" {...shortcutProps("help")} onClick={onHelp}><CircleHelp size={17} aria-hidden="true" /></button>
+            {onAbandon && (
+              <button type="button" className="match-tool match-end" aria-label="End current match" title="End match" onClick={onAbandon}>
+                <LogOut size={16} aria-hidden="true" /> <span>End match</span>
+              </button>
+            )}
+            {lobby.status !== "playing" && <button type="button" className="match-tool" aria-label="Leave lobby" title="Leave lobby" onClick={onLeave}><LogOut size={16} aria-hidden="true" /></button>}
+          </div>
+        </div>
+      </header>
+      <div className="match-stage">
+        <aside id="match-players" className={`players-panel ${drawer === "players" ? "drawer-open" : ""}`} aria-label="Players and bank">
           <div className="panel-heading">
             <Users size={16} />
             <h3>Players</h3>
           </div>
-          {game.players.map((p) => {
-            const lp = lobby.players.find((x) => x.id === p.id);
-            return (
-              <div
-                key={p.id}
-                className={`player-card ${p.id === game.activePlayerId ? "active" : ""} ${p.id === meId ? "self" : ""}`}
-                style={{ "--player": p.color }}
-              >
-                <div className="player-card-top">
-                  <span className="player-token">
-                    {p.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <div>
-                    <strong>{p.name}</strong>
-                    <small>
-                      {p.id === meId
-                        ? "You"
-                        : lp?.isBot
-                          ? `Bot · ${lp.difficulty[0].toUpperCase()}${lp.difficulty.slice(1)}`
-                        : lp?.connected === false
-                          ? "Reconnecting…"
-                          : p.id === game.activePlayerId
-                            ? "Current turn"
-                            : "Waiting"}
-                    </small>
+          <div className="match-player-list">
+            {game.players.map((p) => {
+              const lp = lobby.players.find((x) => x.id === p.id);
+              return (
+                <div
+                  key={p.id}
+                  className={`player-card ${p.id === game.activePlayerId ? "active" : ""} ${p.id === meId ? "self" : ""}`}
+                  style={{ "--player": p.color }}
+                >
+                  <div className="player-card-top">
+                    <span className="player-token">
+                      {p.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <div>
+                      <strong>{p.name}</strong>
+                      <small>
+                        {p.id === meId
+                          ? "You"
+                          : lp?.isBot
+                            ? `Bot · ${lp.difficulty[0].toUpperCase()}${lp.difficulty.slice(1)}`
+                          : lp?.connected === false
+                            ? "Reconnecting…"
+                            : p.id === game.activePlayerId
+                              ? "Current turn"
+                              : "Waiting"}
+                      </small>
+                    </div>
+                    <span className="player-score">
+                      {p.id === meId ? p.score : p.visibleScore}
+                      <small>VP</small>
+                    </span>
                   </div>
-                  <span className="player-score">
-                    {p.id === meId ? p.score : p.visibleScore}
-                    <small>VP</small>
-                  </span>
-                </div>
-                <div className="player-stats">
-                  <PlayerHandBacks playerId={p.id} kind="resource" count={p.resourceCount} discardThreshold={game.settings.discardThreshold} />
-                  <PlayerHandBacks playerId={p.id} kind="development" count={p.developmentCount} />
-                  <span title="Played knights">
-                    <Shield size={14} />
-                    {p.knights}
-                  </span>
-                  <span title="Longest continuous route">
-                    <Route size={14} />
-                    {p.longestRoad || 0}
-                  </span>
-                </div>
-                {(game.longestRoadHolder === p.id ||
-                  game.largestArmyHolder === p.id) && (
-                  <div className="player-awards">
-                    {game.longestRoadHolder === p.id && (
-                      <span>
-                        <Route size={11} />
-                        Longest route +2
-                      </span>
-                    )}
-                    {game.largestArmyHolder === p.id && (
-                      <span>
-                        <Swords size={11} />
-                        Largest army +2
-                      </span>
-                    )}
+                  <div className="player-stats">
+                    <PlayerHandBacks playerId={p.id} kind="resource" count={p.resourceCount} discardThreshold={game.settings.discardThreshold} />
+                    <PlayerHandBacks playerId={p.id} kind="development" count={p.developmentCount} />
+                    <span title="Played knights">
+                      <Shield size={14} />
+                      {p.knights}
+                    </span>
+                    <span title="Longest continuous route">
+                      <Route size={14} />
+                      {p.longestRoad || 0}
+                    </span>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                  {(game.longestRoadHolder === p.id ||
+                    game.largestArmyHolder === p.id) && (
+                    <div className="player-awards">
+                      {game.longestRoadHolder === p.id && (
+                        <span>
+                          <Route size={11} />
+                          Longest route +2
+                        </span>
+                      )}
+                      {game.largestArmyHolder === p.id && (
+                        <span>
+                          <Swords size={11} />
+                          Largest army +2
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           <div className="bank-panel">
-            <span className="eyebrow">THE BANK</span>
+            <h3>Bank</h3>
             <div>
               {RES.map((r) => (
                 <span key={r} data-deal-bank={r} title={`${META[r].name} remaining`}>
@@ -1747,264 +635,31 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
                   <strong>{game.bank[r]}</strong>
                 </span>
               ))}
-            </div>
-            <small data-deal-bank="development">
-              <ScrollText size={13} />
-              {game.developmentRemaining} development cards left
-            </small>
-          </div>
-          <div className="pieces-panel">
-            <span className="eyebrow">SUPPLY</span>
-            <div>
-              <span>
-                <Route size={17} />
-                {me.roadsLeft} roads
-              </span>
-              <span>
-                <Home size={17} />
-                {me.settlementsLeft} settlements
-              </span>
-              <span>
-                <Building2 size={17} />
-                {me.citiesLeft} cities
+              <span role="img" data-deal-bank="development" title="Development cards remaining" aria-label={`${game.developmentRemaining} development cards remaining`}>
+                <ScrollText size={16} aria-hidden="true" />
+                <strong>{game.developmentRemaining}</strong>
               </span>
             </div>
           </div>
         </aside>
-        <section className="board-section">
-          <div className={`turn-banner ${myTurn ? "your-turn" : ""}`}>
-            <span className="turn-avatar" style={{ background: active?.color }}>
-              {active?.name.slice(0, 1)}
-            </span>
-            <div>
-              <strong>
-                {myTurn ? "Your turn" : `${active?.name || "Player"}’s turn`}
-              </strong>
-              <span>
-                {myTurn || game.phase === "discard"
-                  ? phaseText
-                  : "Waiting for the active player."}
-              </span>
-              {myTurn && game.phase === "robber" && game.settings.friendlyRobber && <FriendlyRobberHint />}
-            </div>
-            {seconds !== null && (
-              <span className={`turn-clock ${seconds <= 15 ? "urgent" : ""}`}>
-                <Clock3 size={16} />
-                {Math.floor(seconds / 60)}:
-                {String(seconds % 60).padStart(2, "0")}
-              </span>
-            )}
-            {mode && (
-              <button
-                className="icon-button"
-                aria-label="Cancel build selection"
-                onClick={() => setMode(null)}
-              >
-                <X size={17} />
-              </button>
-            )}
-          </div>
-          <div className="board-frame">
-            <Board
-              game={game}
-              meId={meId}
-              mode={mode}
-              previewCities={!dev && !mode && !busy && canAct && afford("city")}
-              onAction={action}
-            />
-            <div className="board-caption">
-              <span>
-                {game.settings.seed ? `Seed: ${game.settings.seed}` : ""}
-              </span>
-            </div>
-          </div>
-          <div className="match-dock">
-            <div className="action-bar">
-              {dev && (
-                <DevelopmentTray id={developmentTrayId} key={dev.id} card={dev} game={game} meta={DEV_META[dev.type] || DEV_META.knight}
-                  restriction={developmentRestriction(dev, game, meId)} busy={!!busy} onClose={closeDevelopment} onPlay={playDevelopment}
-                  resourceTypes={RES} resourceMeta={META} />
-              )}
-              {game.phase === "steal" && myTurn && (
-                <RobberTray players={game.players} targetIds={game.stealTargets} busy={!!busy} onAction={action} />
-              )}
-              <div className="dice-group">
-                <Dice value={game.dice?.[0]} />
-                <Dice value={game.dice?.[1]} />
-                {game.dice && (
-                  <span className="dice-total">
-                    {game.dice[0] + game.dice[1]}
-                  </span>
-                )}
-              </div>
-              <div className="build-actions">
-                {[
-                  ["road", Route, "Road"],
-                  ["settlement", Home, "Settlement"],
-                  ["city", Building2, "City"],
-                ].map(([type, Icon, label]) => (
-                  <button
-                    key={type}
-                    className={`build-action ${mode === type ? "selected" : ""}`}
-                    aria-pressed={mode === type}
-                    {...shortcutProps(type)}
-                    disabled={
-                      !canAct ||
-                      !!busy ||
-                      !afford(type) ||
-                      !(type === "road"
-                        ? me.roadsLeft
-                        : type === "settlement"
-                          ? me.settlementsLeft
-                          : me.citiesLeft)
-                    }
-                    onClick={() => { setDevId(null); setTrade(null); setMode(mode === type ? null : type); }}
-                  >
-                    <Icon size={18} />
-                    <span>
-                      {label}
-                      <Cost cost={COSTS[type]} />
-                    </span>
-                  </button>
-                ))}
-                <button
-                  className="build-action"
-                  {...shortcutProps("development")}
-                  disabled={
-                    !canAct ||
-                    !!busy ||
-                    !afford("development") ||
-                    !game.developmentRemaining
-                  }
-                  onClick={() => action("buyDevelopment")}
-                >
-                  <ScrollText size={18} />
-                  <span>
-                    Develop
-                    <Cost cost={COSTS.development} />
-                  </span>
-                </button>
-              </div>
-              <div className="turn-actions">
-                {myTurn && game.phase === "roll" ? (
-                  <Button
-                    className="roll-reminder"
-                    data-roll-reminder={remindRoll || undefined}
-                    {...shortcutProps("roll")}
-                    onClick={() => action("rollDice")}
-                    disabled={!!busy || game.roadBuildingRemaining > 0}
-                  >
-                    <Dices size={17} />
-                    Roll dice
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="outline"
-                      disabled={!canAct || !!busy}
-                      aria-expanded={!!trade && canAct}
-                      aria-controls={trade && canAct ? "match-trade-tray" : undefined}
-                      onClick={trade ? closeTrade : openTrade}
-                    >
-                      <Handshake size={17} />
-                      Trade
-                    </Button>
-                    <Button
-                      {...shortcutProps("endTurn")}
-                      disabled={!canAct || !!busy}
-                      onClick={() => action("endTurn")}
-                    >
-                      End turn
-                      <ArrowRight size={16} />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-            {offered && (
-              <div className="trade-offer">
-                <Handshake size={20} />
-                <div>
-                  <strong>{offerOwner?.name} offers a trade</strong>
-                  <ResourceOfferCards give={offered.from === meId ? offered.give : offered.want}
-                    get={offered.from === meId ? offered.want : offered.give} resourceTypes={RES} resourceMeta={META} />
-                </div>
-                {offered.from === meId ? (
-                  <Button variant="outline" onClick={() => action("cancelTrade", { offerId: offered.id })}>
-                    Cancel offer
-                  </Button>
-                ) : (
-                  <>
-                    <Button variant="outline" {...shortcutProps("decline")} disabled={!!busy} onClick={() => action("declineTrade", { offerId: offered.id })}>
-                      Decline
-                    </Button>
-                    <Button
-                      {...shortcutProps("accept")}
-                      disabled={!canAccept || !!busy}
-                      onClick={() => action("acceptTrade", { offerId: offered.id })}
-                    >
-                      Accept trade
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-            <section className="hand-section">
-              <ResourceCardDraft game={game} me={me} offers={openTradeOffers(game)} tradeOpen={!!trade && canAct}
-                canTrade={canAct} discardCount={discardCount} busy={!!busy} onOpen={openTrade} onClose={closeTrade}
-                onAction={action} resourceTypes={RES} resourceMeta={META} pending={deals.pending} />
-              <div className="hand-cards">
-                <div className="development-hand" data-deal-hand="development">
-                  {dealtDevelopment.length ? (
-                    dealtDevelopment.map((card) => {
-                      const meta = DEV_META[card.type] || DEV_META.knight,
-                        Icon = meta.icon,
-                        restriction = developmentRestriction(card, game, meId);
-                      return (
-                        <button
-                          key={card.id}
-                          data-deal-card={card.id}
-                          className={`development-card ${card.type === "victoryPoint" ? "victory" : ""}`}
-                          disabled={blockingPrompt}
-                          aria-description={restriction || undefined}
-                          aria-expanded={!blockingPrompt ? dev?.id === card.id : undefined}
-                          aria-controls={dev?.id === card.id ? developmentTrayId : undefined}
-                          onClick={event => inspectDevelopment(card.id, event.currentTarget)}
-                        >
-                          <Icon size={23} strokeWidth={1.3} />
-                          <strong>{meta.name}</strong>
-                          <small>
-                            {card.type === "victoryPoint"
-                              ? "+1 hidden VP"
-                              : card.turnBought === game.turn
-                                ? "Next turn"
-                                : "Development"}
-                          </small>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="empty-development">
-                      <ScrollText size={23} strokeWidth={1.2} />
-                      <span>No development cards</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          </div>
+        <section className="board-section" aria-label="Play area">
+          <Board key={lobby.matchId || lobby.id} game={game} matchId={lobby.matchId} meId={meId} mode={selectedBuild}
+            canBuild={dev ? {} : canBuild} busy={!!busy} onAction={action} resourceMeta={META} />
         </section>
-        <aside className="game-sidebar">
-          <div className="segmented small">
+        {offers.length > 0 && <TradeOffers offers={offers} game={game} me={me} busy={!!busy} onAction={action} resourceTypes={RES} resourceMeta={META} />}
+        <aside id="match-activity" className="game-sidebar" aria-label="Game activity" hidden={!activityOpen}>
+          <div className="match-activity-tabs" role="group" aria-label="Game activity view">
             <button
-              className={sidebar === "activity" ? "selected" : ""}
+              className="match-command"
+              aria-pressed={sidebar === "activity"}
               onClick={() => setSidebar("activity")}
             >
               <ScrollText size={14} />
               Game log
             </button>
             <button
-              className={sidebar === "chat" ? "selected" : ""}
+              className="match-command"
+              aria-pressed={sidebar === "chat"}
               {...shortcutProps("chat")}
               onClick={() => setSidebar("chat")}
             >
@@ -2025,8 +680,78 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
             </div>
           )}
         </aside>
+        {drawer && <button type="button" className="match-drawer-shade" tabIndex={-1} aria-label="Close panel" onClick={() => setDrawer(null)} />}
       </div>
-      <CardDealLayer scope={matchPage} game={game} me={me} deals={deals} resourceMeta={META} developmentMeta={DEV_META} />
+      <section className="match-dock" aria-label="Turn controls and cards">
+        <div className="action-bar">
+          {dev && (
+            <DevelopmentTray id={developmentTrayId} key={dev.id} card={dev} game={game} meta={DEV_META[dev.type] || DEV_META.knight}
+              restriction={developmentRestriction(dev, game, meId)} busy={!!busy} onClose={closeDevelopment} onPlay={playDevelopment}
+              resourceTypes={RES} resourceMeta={META} Face={CardFace} />
+          )}
+          {game.phase === "steal" && myTurn && (
+            <RobberTray players={game.players} targetIds={game.stealTargets} busy={!!busy} onAction={action} />
+          )}
+          <div className="build-actions" role="group" aria-label="Build and piece inventory">
+            {[
+              ["road", Route, "Road", me.roadsLeft],
+              ["settlement", Home, "Settlement", me.settlementsLeft],
+              ["city", Building2, "City", me.citiesLeft],
+            ].map(([type, Icon, label, left]) => (
+              <button
+                key={type}
+                type="button"
+                className={`build-action ${selectedBuild === type ? "selected" : ""}`}
+                aria-label={`${label}, ${left} left`}
+                aria-description={costDescription(type)}
+                aria-pressed={selectedBuild === type}
+                {...shortcutProps(type)}
+                disabled={!canBuild[type] || !!busy}
+                onClick={() => { setDevId(null); setTrade(false); setMode(selectedBuild === type ? null : type); }}
+              >
+                <Icon size={19} aria-hidden="true" />
+                <span className="build-details">
+                  {label}
+                  <Cost cost={COSTS[type]} />
+                </span>
+                <span className="piece-count" aria-hidden="true" data-empty={left === 0} title={`${left} left to place`}>{left}</span>
+              </button>
+            ))}
+            <button type="button"
+              className="build-action"
+              aria-description={costDescription("development")}
+              {...shortcutProps("development")}
+              disabled={!canAct || !!busy || !afford("development") || !game.developmentRemaining}
+              onClick={() => action("buyDevelopment")}
+            >
+              <ScrollText size={19} aria-hidden="true" />
+              <span className="build-details">
+                Develop
+                <Cost cost={COSTS.development} />
+              </span>
+            </button>
+          </div>
+          <div className="turn-actions">
+            <MatchDice dice={game.dice} rollId={rollId} canRoll={canRoll} onRoll={() => action("rollDice")} />
+            <button type="button" ref={tradeTrigger} className="match-command turn-command" disabled={!canAct || !!busy}
+              aria-expanded={trading} aria-controls={trading ? "match-trade-tray" : undefined}
+              onClick={trading ? closeTrade : openTrade}>
+              <Handshake size={21} aria-hidden="true" /> Trade
+            </button>
+            <button type="button" className="match-command turn-command" data-tone="gold" {...shortcutProps("endTurn")} disabled={!canAct || !!busy} onClick={() => action("endTurn")}>
+              End turn <ArrowRight size={20} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <PendingCardArrivals.Provider value={deals.pending}>
+          <ResourceCardDraft tradeOpen={trading} canTrade={canAct} discardCount={discardCount} game={game} me={me} offers={offers}
+            busy={!!busy} onOpen={openTrade} onClose={closeTrade} onAction={action} resourceTypes={RES} resourceMeta={META} Face={CardFace}
+            renderHand={selection => <MatchHands me={me} game={game} resourceTypes={RES} resourceMeta={META}
+              developmentMeta={DEV_META} onInspect={blockingPrompt ? undefined : inspectDevelopment}
+              inspected={dev?.id} inspectionId={developmentTrayId} selection={selection} />} />
+        </PendingCardArrivals.Provider>
+      </section>
+      <CardDealLayer scope={matchPage} game={game} me={me} deals={deals} resourceMeta={META} developmentMeta={DEV_META} Face={CardFace} />
     </main>
   );
 }
@@ -2106,7 +831,7 @@ function Guide({ onClose, feedback }) {
           at 3:1, or 2:1 for its resource. Only the active player can trade.
         </p>
       </div>
-      <KeyboardShortcuts />
+      <KeyboardShortcuts tableNavigation />
     </TableDialog>
   );
 }

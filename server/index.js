@@ -7,27 +7,31 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGame, action, viewGame, tick } from './game.js';
 import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary, viewReplay } from './match-recording.js';
+import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
-export const DEFAULT_SETTINGS = { maxPlayers: 4, extendedBoard: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 function cleanText(value, max, fallback = '') { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) || fallback : fallback; }
-export function validateSettings(input = {}, previous = DEFAULT_SETTINGS) {
+export function validateSettings(input = {}, previous) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid game settings.');
-  const result = { ...previous };
+  const overrides = {};
   const ranges = { maxPlayers: [2, 6], victoryPoints: [3, 20], discardThreshold: [3, 30], hardHandLimit: [0, 50], turnSeconds: [0, 600] };
   for (const [key, [min, max]] of Object.entries(ranges)) if (key in input) {
     const value = input[key];
     if (!Number.isInteger(value) || value < min || value > max || (key === 'turnSeconds' && value > 0 && value < 30)) throw Error(`Invalid ${key} setting.`);
-    result[key] = value;
+    overrides[key] = value;
   }
-  if ('maxPlayers' in input && input.maxPlayers !== previous.maxPlayers && !('extendedBoard' in input)) result.extendedBoard = result.maxPlayers >= 5;
   for (const key of ['extendedBoard', 'friendlyRobber', 'balancedNumbers', 'allowPlayerTrading', 'pairedTurns']) if (key in input) {
     if (typeof input[key] !== 'boolean') throw Error(`Invalid ${key} setting.`);
-    result[key] = input[key];
+    overrides[key] = input[key];
   }
-  if ('seed' in input) result.seed = cleanText(input.seed, 64);
-  return result;
+  if ('seed' in input) overrides.seed = cleanText(input.seed, 64);
+  if (!previous) return { ...DEFAULT_SETTINGS, ...lobbyPreset(overrides.maxPlayers ?? DEFAULT_PLAYER_COUNT), ...overrides };
+  if ('maxPlayers' in overrides && overrides.maxPlayers !== previous.maxPlayers && !('extendedBoard' in overrides)) {
+    overrides.extendedBoard = lobbyPreset(overrides.maxPlayers).extendedBoard;
+  }
+  return { ...previous, ...overrides };
 }
 
 export async function createAppServer({ port = 3000, host = '0.0.0.0', production = false, testMode = false, persistence = true, dataFile = path.join(root, '.runtime', 'lobbies.json') } = {}) {
@@ -123,7 +127,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     const playerId = socket.data.playerId;
     if (!sessions.has(playerId)) sessions.set(playerId, new Set());
     sessions.get(playerId).add(socket.id);
-    socket.emit('session', { playerId }); socket.emit('directory', directory());
+    socket.emit('session', { playerId, features: { localBots: true } }); socket.emit('directory', directory());
     const oldLobby = lobbies.get(memberships.get(playerId));
     if (oldLobby) {
       const wasOffline = !oldLobby.players.some(p => p.connected);

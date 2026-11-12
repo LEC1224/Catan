@@ -10,7 +10,6 @@ Requires Node.js 22 or newer.
 npm install
 npm run dev
 ```
-
 Open **http://localhost:3000**. The server listens on all network interfaces so other devices on the same network can use `http://YOUR-LAN-IP:3000` if the local firewall permits it. A localhost invite only works on the host computer; use the LAN address when copying invites for nearby devices.
 
 For an optimized local build:
@@ -19,6 +18,8 @@ For an optimized local build:
 npm run build
 npm start
 ```
+
+After updating the game, stop the running production server, rebuild, run `npm start` again, and reload the game tab. Rebuilding alone updates the browser files while the running server keeps its old command handlers.
 
 Use `PORT` and `HOST` environment variables to change the port or listening interface. On PowerShell: `$env:PORT = '3001'` then `npm run dev`.
 
@@ -34,19 +35,19 @@ Refresh or reconnect using the same browser to reclaim your seat. The anonymous 
 
 After a win, inspect the point breakdown, score timeline, and key moments. **Replay** opens a shared board with a timeline of turns, actions, and key moments. Click a turn or key moment to jump to it, or drag through the actions to preview moves on your board. When you release, the shared replay jumps to that step. **Results** returns only your screen to the summary; **Join replay** catches you up to the room. Review ends when the host returns the room to the lobby. Games started before recording may only have part of their history.
 
-Lobby and game sound effects start after your first interaction. If you need to discard on a seven, you hear a stronger warning. With the turn clock enabled, you hear one reminder when you have ten seconds left to make a decision. Use the speaker button in the header to mute or unmute sounds; your browser remembers the setting.
+Lobby and game sound effects start after your first interaction. If you need to discard on a seven, you hear a stronger warning. With the turn clock enabled, you hear one reminder when you have ten seconds left to make a decision. Use the speaker button in either header to mute or unmute sounds; your browser remembers the setting.
 
 ## Settings and variants
 
 | Setting | Default | Meaning |
 |---|---|---|
 | Seats | 4 | Between 2 and 6 |
-| Expanded island | Automatic at 5–6 selected seats | 30 hexes; can be disabled even for 5–6, who retain the extra resource and development cards |
-| Points to win | 10 | 3–20 |
-| Discard threshold | 7 | On a seven, hands above this size discard half |
+| Board | Classic for 2–4 seats; Expanded for 5–6 | 19 or 30 hexes; 5–6 players retain the extra resource and development cards on either board |
+| Points to win | 15 for 2 seats; 12 for 3; 10 for 4–6 | 3–20 |
+| Discard threshold | 9 for 2 seats; 8 for 3; 7 for 4–6 | On a seven, hands above this size discard half |
 | Hard hand limit | Off | Optional house rule; excess resources automatically return, taking from the largest pile first |
 | Thinking time | 120 seconds | 0 disables the clock; otherwise 30–600 seconds per decision phase |
-| Friendly robber | Off | Cannot move onto a hex touching an opponent with fewer than 3 visible points |
+| Friendly robber | On for 2–3 seats; Off for 4–6 | Cannot move onto a hex touching an opponent with fewer than 3 visible points |
 | Balanced numbers | On | Prevents adjacent 6/8 tokens |
 | Player trading | On | Disable for supply/port-only trading |
 | Paired turns | On | With 5–6 actual players, a second player receives an action phase without player trading |

@@ -13,9 +13,23 @@ async function connect(port, token = randomUUID()) {
   return socket;
 }
 
-test('settings validate values and automatically select the expansion', () => {
-  assert.equal(validateSettings({ maxPlayers: 6 }).extendedBoard, true);
-  assert.equal(validateSettings({ maxPlayers: 6, extendedBoard: false }).extendedBoard, false);
+test('new lobby settings default to the preset for the selected player limit', () => {
+  for (const [maxPlayers, expected] of [
+    [2, [false, true, 9, 15]],
+    [3, [false, true, 8, 12]],
+    [4, [false, false, 7, 10]],
+    [5, [true, false, 7, 10]],
+    [6, [true, false, 7, 10]],
+  ]) {
+    const { extendedBoard, friendlyRobber, discardThreshold, victoryPoints } = validateSettings({ maxPlayers });
+    assert.deepEqual([extendedBoard, friendlyRobber, discardThreshold, victoryPoints], expected, `${maxPlayers} players`);
+  }
+  const custom = validateSettings({ maxPlayers: 2, extendedBoard: true, friendlyRobber: false, victoryPoints: 9, discardThreshold: 11 });
+  assert.deepEqual([custom.extendedBoard, custom.friendlyRobber, custom.discardThreshold, custom.victoryPoints], [true, false, 11, 9]);
+  assert.deepEqual(validateSettings({ maxPlayers: 3 }, custom), { ...custom, maxPlayers: 3, extendedBoard: false });
+});
+
+test('settings reject invalid values', () => {
   assert.throws(() => validateSettings({ maxPlayers: 7 }));
   assert.throws(() => validateSettings({ turnSeconds: 5 }));
   assert.throws(() => validateSettings({ discardThreshold: '12' }));

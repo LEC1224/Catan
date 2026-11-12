@@ -1,0 +1,114 @@
+.match-offer {
+  border: 3px double #b79a63;
+  border-radius: 7px;
+  background:
+    radial-gradient(ellipse at 75% -30%, #ac9c604b, transparent 72%),
+    linear-gradient(125deg, #293b30eb, #142b24fa),
+    var(--match-slate) center / cover #23362d;
+  color: var(--match-cream);
+  box-shadow: inset 0 0 0 2px #101d17, inset 0 1px 8px #b5975c28, 0 8px 26px #091917a3;
+}
+.trade-side {
+  --trade-ink: #f1c591;
+  --trade-border: #ad81547a;
+  --trade-wash: #9d65341c;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--trade-border);
+  border-radius: 4px;
+  background: linear-gradient(var(--trade-wash), var(--trade-wash)), #111f19;
+  box-shadow: inset 0 1px 5px #0b14107a;
+}
+.trade-side[data-side="get"] {
+  --trade-ink: #b4e1ca;
+  --trade-border: #7bab947d;
+  --trade-wash: #669e791c;
+}
+.trade-side-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--trade-ink);
+}
+.trade-side-title svg { flex: none; }
+.trade-side-title h3 { margin: 0; }
+.match-offer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+.match-offer {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: clamp(8px, 1.1vw, 17px);
+  width: var(--offer-width);
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+.match-offer-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.trade-sender {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 28px;
+  border: 1px solid #c9aa70;
+  border-radius: 3px;
+  background: linear-gradient(#222b1e3b, #14221ca8), var(--offer-player, #8a6c3e);
+  color: #fff0cc;
+}
+.match-offer h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f6ddb1;
+  font: 700 17px/1.18 Georgia, serif;
+}
+.trade-offer-tabs {
+  display: flex;
+  gap: 4px;
+}
+.trade-offer-tabs .match-command {
+  min-height: 27px;
+  min-width: 29px;
+  padding: 2px 5px 4px;
+  font: 700 13px/1 Georgia, serif;
+}
+.match-offer .trade-side {
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+}
+.match-offer-exchange { display: grid; grid-template-columns: 39px minmax(0, 1fr); gap: 4px; }
+.match-offer-lanes { display: grid; gap: 4px; }
+.trade-hand-anchor {
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--hand-player), #d4b77c 60%);
+  border-radius: 4px;
+  background: linear-gradient(115deg, #131a1c45, #10211bd6), var(--hand-player);
+  color: #fff0cd;
+  box-shadow: inset 0 0 0 2px #13251e7a;
+}
+.match-offer .fan-emblem { width: 13px; height: 13px; top: 3px; left: 3px; }
+.match-offer .fan-emblem svg { width: 9px; height: 9px; }
+.match-offer .fan-name strong { font-size: 9px; }
+.match-offer-actions .match-command { flex: 1; min-height: 35px; }
+.trade-offer-note { color: #e8cba6; font-size: 11px; line-height: 1.3; overflow-wrap: anywhere; }
+
+@media (max-width: 740px) {
+  .match-offer { top: 6px; right: 8px; padding: 6px; gap: 5px; }
+  .match-offer .trade-side { padding: 4px; }
+  .match-offer-actions .match-command { min-height: 33px; padding-block: 4px; }
+}

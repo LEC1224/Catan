@@ -3,6 +3,7 @@ import {
   ArrowLeft, ArrowRight, Bot, Check, ChevronDown, CircleHelp, Compass, Copy,
   Crown, DoorOpen, Flag, Globe2, Home, LockKeyhole, Plus, ScrollText, Users, X,
 } from "lucide-react";
+import { DEFAULT_PLAYER_COUNT, lobbyPreset } from "../shared/lobby-presets.js";
 import { Chat } from "./chat.jsx";
 import "./lobby.css";
 
@@ -14,19 +15,10 @@ const TERRAIN_PALETTE = ["#70834b", "#a48d51", "#546b4a", "#8e6045", "#667e7d", 
 const DIFFICULTIES = { easy: "Easy", normal: "Normal", hard: "Hard" };
 
 function Crest({ className = "" }) {
-  return (
-    <svg className={`front-crest ${className}`} viewBox="0 0 60 68" aria-hidden="true">
-      <path d="M30 2 56 15v27L30 66 4 42V15z" fill="#36251a" stroke="#d1ae69" strokeWidth="2" />
-      <path d="M30 7 51 18v22L30 59 9 40V18z" fill="#683e2b" stroke="#9f743e" />
-      <path d="M30 10 48 20v18L30 55 12 38V20z" fill="none" stroke="#e3b870" strokeOpacity=".46" strokeWidth=".6" />
-      <path d="M16 39h28M20 43h20M24 47h12" stroke="#d1ae69" strokeWidth="1" />
-      <path d="m15 28 8-7 6 5 8-10 8 10h-3v11h-5v-7h-3v7H18v-9z" fill="#e5c485" />
-      <path d="M22 29h3v4h-3z" fill="#754631" />
-    </svg>
-  );
+  return <img className={`front-crest ${className}`} src="/assets/lobby-crest.svg" alt="" width="60" height="68" />;
 }
 
-export function LobbyHeader({ connected, inLobby, leaving, onLeave, onHelp }) {
+export function LobbyHeader({ connected, inLobby, leaving, onLeave, onHelp, soundControl }) {
   return (
     <header className="front-header">
       <div className="front-header-inner">
@@ -35,15 +27,16 @@ export function LobbyHeader({ connected, inLobby, leaving, onLeave, onHelp }) {
           <strong>LeCataNi</strong>
         </div>
         <div className="front-header-actions">
-          <span className={`front-online ${connected ? "" : "offline"}`}>
-            <span aria-hidden="true" />
-            {connected ? "Connected" : "Connecting"}
+          <span className={`front-online ${connected ? "" : "offline"}`} role="status">
+            <span className="front-status-light" aria-hidden="true" />
+            <span className="front-online-label">{connected ? "Connected" : "Connecting"}</span>
           </span>
           {inLobby && (
-            <button type="button" className="front-button quiet" onClick={onLeave} disabled={leaving}>
-              <ArrowLeft size={15} aria-hidden="true" /> Leave lobby
+            <button type="button" className="front-button quiet front-leave" onClick={onLeave} disabled={leaving} aria-label="Leave lobby" title="Leave lobby">
+              <ArrowLeft size={15} aria-hidden="true" /> <span>Leave lobby</span>
             </button>
           )}
+          {soundControl}
           <button type="button" className="front-button quiet front-guide" onClick={onHelp} aria-label="Game guide">
             <CircleHelp size={16} aria-hidden="true" /> <span>Game guide</span>
           </button>
@@ -233,10 +226,10 @@ export function HomeScreen({ name, setName, directory, command, busy, connected 
   const [tab, setTab] = useState(invite ? "join" : "create");
   const [title, setTitle] = useState("");
   const [privateLobby, setPrivateLobby] = useState(false);
-  const [players, setPlayers] = useState(4);
+  const [players, setPlayers] = useState(DEFAULT_PLAYER_COUNT);
   const [code, setCode] = useState(invite.toUpperCase());
   const displayName = useRef(null);
-  const expanded = players >= 5;
+  const preset = lobbyPreset(players);
   const playerName = name.trim();
   const joinRoom = (id) => {
     setTab("join");
@@ -255,7 +248,7 @@ export function HomeScreen({ name, setName, directory, command, busy, connected 
         name: title.trim() || `${playerName}’s lobby`,
         playerName,
         isPrivate: privateLobby,
-        settings: { maxPlayers: players, extendedBoard: expanded },
+        settings: preset,
       });
     } else {
       command("joinLobby", { id: code.trim().toUpperCase(), playerName });
@@ -290,13 +283,19 @@ export function HomeScreen({ name, setName, directory, command, busy, connected 
                     ))}
                   </div>
                 </fieldset>
-                <div className="play-options">
-                  <div className="play-board">
-                    <BoardThumbnail expanded={expanded} />
-                    <span>{expanded ? "Expanded board" : "Classic board"}</span>
+                <dl className="play-preset" aria-label="Game settings" aria-live="polite" aria-atomic="true">
+                  <div className="play-preset-board">
+                    <dt>Board</dt>
+                    <dd>
+                      {preset.extendedBoard ? "Expanded" : "Classic"}
+                      <BoardThumbnail expanded={preset.extendedBoard} />
+                    </dd>
                   </div>
-                  <Toggle checked={privateLobby} onChange={setPrivateLobby} label="Private lobby" />
-                </div>
+                  <div><dt>Points to win</dt><dd>{preset.victoryPoints}</dd></div>
+                  <div><dt>Discard threshold</dt><dd>{preset.discardThreshold} cards</dd></div>
+                  <div><dt>Friendly robber</dt><dd>{preset.friendlyRobber ? "On" : "Off"}</dd></div>
+                </dl>
+                <Toggle checked={privateLobby} onChange={setPrivateLobby} label="Private lobby" />
               </>
             ) : (
               <label className="front-field">
@@ -356,6 +355,13 @@ function SettingsPanel({ lobby, host, busy, command }) {
                 key={lobby.name}
                 defaultValue={lobby.name}
                 maxLength={48}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    event.currentTarget.value = lobby.name;
+                    event.currentTarget.blur();
+                  }
+                }}
                 onBlur={(event) => {
                   const nextName = event.target.value.trim();
                   if (!nextName) event.target.value = lobby.name;
@@ -442,8 +448,9 @@ function RosterSlot({ player, index, meId, hostId, host, busy, command }) {
   );
 }
 
-export function WaitingRoom({ lobby, meId, command, copyInvite, busy }) {
+export function WaitingRoom({ lobby, meId, botSupport, command, copyInvite, busy }) {
   const host = meId === lobby.hostId;
+  const hasBotSlot = host && lobby.players.length < lobby.settings.maxPlayers;
   const me = lobby.players.find((player) => player.id === meId);
   const allReady = lobby.players.filter((player) => player.id !== lobby.hostId).every((player) => player.isBot || (player.ready && player.connected));
   const blocked = lobby.players.length < 2 ? "At least 2 players are required." : !allReady ? "Waiting for players to be ready." : "";
@@ -453,8 +460,8 @@ export function WaitingRoom({ lobby, meId, command, copyInvite, busy }) {
       <div className="waiting-grid">
         <section className="front-panel roster-panel" aria-labelledby="roster-title">
           <PanelHeading icon={Users} title="Players" id="roster-title" count={`${lobby.players.length}/${lobby.settings.maxPlayers}`}>
-            {host && lobby.players.length < lobby.settings.maxPlayers && (
-              <button type="button" className="front-button add-bot-action" disabled={!!busy} onClick={() => command("addBot", { difficulty: "normal" })}>
+            {hasBotSlot && (
+              <button type="button" className="front-button add-bot-action" disabled={!!busy || botSupport !== true} onClick={() => command("addBot", { difficulty: "normal" })}>
                 <Bot size={16} aria-hidden="true" /> Add bot
               </button>
             )}
@@ -464,6 +471,7 @@ export function WaitingRoom({ lobby, meId, command, copyInvite, busy }) {
               <RosterSlot key={lobby.players[index]?.id || index} player={lobby.players[index]} index={index} meId={meId} hostId={lobby.hostId} host={host} busy={busy} command={command} />
             ))}
           </ol>
+          {hasBotSlot && botSupport === false && <p className="roster-note" role="status">The game server needs an update to add bots.</p>}
           {lobby.players.some((player) => player.isBot) && <p className="roster-note">Bots run in the host’s browser. Keep it open during the game.</p>}
           <div className="roster-command">
             {host ? (
