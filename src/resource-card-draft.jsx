@@ -2,6 +2,7 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { Archive, ArrowDownToLine, ArrowUpFromLine, Landmark, Minus, Package, Plus, Undo2, Users, X } from "lucide-react";
 import { resourceName } from "../shared/resource-names.js";
 import { bankTradeRate, MAX_TRADE_OFFERS, playerTradesAvailable } from "../shared/trades.js";
+import { CardFan } from "./card-fan.jsx";
 import { useDraftFlights } from "./draft-flights.js";
 import { heldCopies, resourceCopies, resourceCounts } from "./resource-copies.js";
 import { bankTradeDraft } from "./trade-draft.js";
@@ -9,10 +10,10 @@ import "./resource-card-draft.css";
 
 const empty = { key: null, give: [], want: [] };
 
-function ResourceFace({ card, dealId }) {
+function ResourceFace({ card, dealId, fan }) {
   const Icon = card.icon;
   return (
-    <span className="draft-face" style={{ "--draft-ink": card.color }} aria-hidden="true"
+    <span className={`draft-face${fan ? " fan-face" : ""}`} style={{ "--draft-ink": card.color }} aria-hidden="true"
       data-deal-card={dealId} data-deal-type={dealId ? card.type : undefined}>
       <span className="draft-face-art" style={{ backgroundPosition: `${(card.tile % 3) * 50}% ${card.tile >= 3 ? 100 : 0}%` }} />
       <span className="draft-face-icon"><Icon size={13} /></span>
@@ -76,19 +77,6 @@ export function ResourceOfferCards({ give, get, resourceTypes, resourceMeta }) {
   );
 }
 
-function FallbackHand({ cards, meta, selection, count, threshold }) {
-  return (
-    <section className="draft-fallback-hand" aria-label="Resources" data-deal-hand="resource"
-      data-discard-risk={count > threshold || undefined}>
-      <div><Package size={16} aria-hidden="true" /> <strong>Resources</strong> <span>{cards.length}</span>
-        {count > threshold && <small>Over discard limit</small>}</div>
-      {cards.length ? <ResourceCardRow cards={cards} meta={meta} zone="hand" size="hand"
-        onCard={selection?.pick} actionLabel={selection?.label} blocked={selection?.blocked} busy={selection?.busy} />
-        : <p>No resources</p>}
-    </section>
-  );
-}
-
 export function ResourceCardDraft({ game, me, offers, tradeOpen, canTrade, discardCount, busy, onOpen, onClose, onAction,
   resourceTypes: types, resourceMeta: meta, Face, renderHand, pending }) {
   const mode = discardCount ? "discard" : tradeOpen && canTrade ? "trade" : null;
@@ -123,13 +111,13 @@ export function ResourceCardDraft({ game, me, offers, tradeOpen, canTrade, disca
     pick: (card, event) => {
       if (busy || blocked(card) || selected.has(card.id)) return;
       if (!mode) onOpen();
-      transfer(event, card.id, "give");
+      transfer(event, card.id, "give", { stack: card.type });
       store([...give, { id: card.id, type: card.type }], want);
     },
   } : null;
 
   function returnCard(card, event) {
-    transfer(event, card.id, "hand");
+    transfer(event, card.id, "hand", { stack: card.type });
     store(give.filter(item => item.id !== card.id), want);
   }
 
@@ -197,8 +185,9 @@ export function ResourceCardDraft({ game, me, offers, tradeOpen, canTrade, disca
         </section>
       )}
       {renderHand ? renderHand(selection) : (
-        <FallbackHand cards={resourceCopies(me.resources, types).filter(card => !selected.has(card.id) && !pending?.has(card.id))} meta={meta}
-          selection={selection} count={me.resourceCount} threshold={game.settings.discardThreshold} />
+        <CardFan kind="resource" title="Resources" icon={Package} empty="No resources" Face={ResourceFace}
+          cards={resourceCopies(me.resources, types).map(card => ({ ...meta[card.type], ...card }))}
+          selection={selection} pending={pending} discardThreshold={game.settings.discardThreshold} />
       )}
       <div className="draft-flight-layer" aria-hidden="true" ref={layer} />
     </div>

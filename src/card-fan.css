@@ -1,0 +1,119 @@
+.card-hand { min-width: 0; }
+.card-hand-heading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  block-size: 29px;
+  padding: 3px 4px 0;
+  color: var(--match-gold, #725832);
+}
+.card-hand-heading h2 {
+  margin: 0;
+  color: var(--match-cream, #584527);
+  font: 600 14px/1.15 Georgia, serif;
+  white-space: nowrap;
+}
+.hand-total {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  min-height: 18px;
+  padding: 1px 4px;
+  border: 1px solid #726043;
+  background: #14231c;
+  color: #e9d0a2;
+  font: 600 11px ui-monospace, Consolas, monospace;
+}
+.hand-warning { display: flex; align-items: center; gap: 4px; color: var(--match-gold, #9d4533); font-size: 11px; white-space: nowrap; }
+.fan-viewport {
+  position: relative;
+  height: var(--fan-height, clamp(105px, 16vw, 157px));
+  overflow: clip;
+}
+.fan-size-probe { position: absolute; width: min(100%, var(--card-width, clamp(53px, 11vw, 86px))); height: 1px; pointer-events: none; }
+.fan-track { position: relative; isolation: isolate; list-style: none; width: 100%; height: 100%; margin: 0; padding: 0; }
+.fan-slot {
+  position: absolute;
+  inset: 0 auto 0 var(--card-x);
+  width: var(--lane-width);
+  z-index: var(--layer);
+  transition: left .25s cubic-bezier(.2,.65,.22,1);
+}
+.fan-slot[data-highlighted="true"], .fan-slot:focus-within:has(.fan-target:focus-visible) { z-index: 200; }
+.fan-target { position: relative; width: 100%; height: 100%; padding: 0; border: 0; background: none; }
+.fan-target:hover { cursor: pointer; }
+.fan-viewport .fan-target:focus-visible { outline: none; }
+.fan-target > .fan-face, .fan-target[data-stacked]::before, .fan-target[data-stacked]::after {
+  position: absolute;
+  left: 0;
+  bottom: calc(17px - var(--card-dip));
+  width: var(--fan-face-width);
+  height: calc(var(--fan-face-width) * 1.34);
+}
+.fan-face {
+  transform: rotate(var(--card-tilt));
+  transform-origin: center 69%;
+  transition: transform .2s cubic-bezier(.18,.78,.28,1.13), box-shadow .18s, border-color .18s;
+  animation: fan-deal .34s cubic-bezier(.22,.64,.26,1) var(--deal-delay) both;
+}
+@keyframes fan-deal {
+  from { opacity: 0; translate: 0 24px; }
+  to { opacity: 1; translate: 0 0; }
+}
+.fan-slot[data-highlighted="true"] .fan-face, .fan-target:focus-visible .fan-face {
+  transform: translateY(-13px) rotate(0deg) scale(1.075);
+  border-color: var(--card-glow, #ffe1a2);
+  box-shadow: 0 0 0 1px var(--card-glow, #ffe3a0a3), inset 0 0 0 2px #ffedbe77, 0 8px 17px #08130ed9;
+}
+.fan-target[data-stacked]::before, .fan-target[data-stacked]::after {
+  content: "";
+  pointer-events: none;
+  border: 1px solid #dbbd86;
+  border-radius: 5px;
+  background: #907443;
+  box-shadow: 0 1px 2px #0b1a15;
+}
+.fan-target[data-stacked]::before { translate: 2px -4px; }
+.fan-target[data-stacked]::after { translate: 1px -2px; background: #b39560; z-index: -1; }
+.fan-stack-count {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(17px + var(--fan-face-width) * 1.34 - 6px);
+  right: -1px;
+  min-width: 15px;
+  padding: 1px 2px;
+  border: 1px solid #e0b976;
+  border-radius: 3px;
+  background: #26372e;
+  color: #ffebba;
+  font: 700 10px/1.1 ui-monospace, Consolas, monospace;
+  text-align: center;
+  pointer-events: none;
+}
+.fan-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--match-muted, #837658);
+  font-size: 12px;
+}
+.fan-empty svg { color: #a3916c; }
+
+@media (max-width: 670px) {
+  .card-hand-heading { block-size: 25px; gap: 5px; padding-inline: 2px; }
+  .card-hand-heading h2 { font-size: 12px; }
+  .fan-viewport[data-clustered] .fan-target { touch-action: manipulation; }
+  .fan-viewport[data-clustered] .fan-name strong { font-size: clamp(7px, calc(var(--fan-face-width) / 5), 11px); }
+  .fan-viewport[data-clustered] .draft-face strong { font-size: clamp(7px, calc(var(--fan-face-width) / 5), 11px); }
+  .fan-empty { gap: 5px; padding: 0 4px; font-size: 10px; text-align: center; }
+  .fan-empty svg { flex: none; width: 19px; }
+}
+@media (max-width: 450px) { .hand-warning > span { display: none; } }
+@media (max-width: 355px) { .card-hand-heading > svg { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .fan-slot, .fan-face { transition: none; }
+  .fan-face { animation: none; }
+}

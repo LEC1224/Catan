@@ -17,7 +17,7 @@ function pose(element) {
 }
 
 function reveal(element) {
-  const scroller = element.closest(".fan-viewport, .draft-card-row");
+  const scroller = element.closest(".draft-card-row");
   if (!scroller) return;
   const card = (faceOf(element) || element).getBoundingClientRect();
   const bounds = scroller.getBoundingClientRect();
@@ -49,9 +49,11 @@ export function useDraftFlights(workspace, layer, mode) {
   useLayoutEffect(() => {
     if (!mode) cancelAll();
     const plans = pending.current.splice(0);
-    for (const { from, id, to, toId, keyboard, refocus } of plans) {
+    for (const { from, id, to, toId, stack, keyboard, refocus } of plans) {
       const root = workspace.current;
-      const target = root?.querySelector(`[data-draft-zone="${to}"] [data-draft-id="${CSS.escape(toId)}"]`);
+      const pile = stack && root?.querySelector(`[data-draft-zone="hand"] [data-draft-stack="${CSS.escape(stack)}"]`);
+      const exact = root?.querySelector(`[data-draft-zone="${to}"] [data-draft-id="${CSS.escape(toId)}"]`);
+      const target = exact || (to === "hand" ? pile : null);
       const face = faceOf(target);
       if (!face || !layer.current) continue;
       if (to !== "picker") reveal(target);
@@ -59,7 +61,8 @@ export function useDraftFlights(workspace, layer, mode) {
       if (keyboard && refocus) {
         const hand = root.querySelector('[data-draft-zone="hand"] button[data-draft-id]:not([aria-disabled="true"]):not(:disabled)');
         const confirm = root.querySelector("[data-draft-confirm]:not(:disabled)");
-        const next = to === "give" ? hand || confirm || target : target;
+        const samePile = pile?.matches(':not([aria-disabled="true"]):not(:disabled)') ? pile : null;
+        const next = to === "give" ? samePile || hand || confirm || target : target;
         next.focus({ preventScroll: true });
       }
       if (!from || !face.animate || matchMedia(motionQuery).matches || document.hidden) continue;
@@ -76,7 +79,7 @@ export function useDraftFlights(workspace, layer, mode) {
       for (const attr of [...copy.attributes]) if (attr.name.startsWith("data-")) copy.removeAttribute(attr.name);
       node.append(copy);
       layer.current.append(node);
-      if (to !== "picker") face.dataset.draftInFlight = "";
+      if (to !== "picker" && !(to === "hand" && pile)) face.dataset.draftInFlight = "";
       const dx = end.x - from.x, dy = end.y - from.y;
       const distance = Math.hypot(dx, dy), bend = Math.min(36, distance * .18);
       const frames = [0, .35, .72, 1].map(t => {
@@ -101,10 +104,10 @@ export function useDraftFlights(workspace, layer, mode) {
     }
   });
 
-  return (event, id, to, { toId = id, refocus = true } = {}) => {
+  return (event, id, to, { toId = id, stack, refocus = true } = {}) => {
     const existing = active.current.get(id);
     const from = pose(existing?.node || faceOf(event.currentTarget));
     existing?.finish();
-    pending.current.push({ from, id, to, toId, keyboard: event.detail === 0, refocus });
+    pending.current.push({ from, id, to, toId, stack, keyboard: event.detail === 0, refocus });
   };
 }
