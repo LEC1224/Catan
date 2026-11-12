@@ -34,6 +34,8 @@ Refresh or reconnect using the same browser to reclaim your seat. The anonymous 
 
 After a win, inspect the point breakdown, score timeline, and key moments. **Replay** opens a shared board with a timeline of turns, actions, and key moments. Click a turn or key moment to jump to it, or drag through the actions to preview moves on your board. When you release, the shared replay jumps to that step. **Results** returns only your screen to the summary; **Join replay** catches you up to the room. Review ends when the host returns the room to the lobby. Games started before recording may only have part of their history.
 
+Lobby and game sound effects start after your first interaction. If you need to discard on a seven, you hear a stronger warning. With the turn clock enabled, you hear one reminder when you have ten seconds left to make a decision. Use the speaker button in the header to mute or unmute sounds; your browser remembers the setting.
+
 ## Settings and variants
 
 | Setting | Default | Meaning |
@@ -66,6 +68,7 @@ npm run build
 - `server/game.js`: game state, rules, legal targets, personalized views and timers.
 - `server/index.js`: guest sessions, lobby directory, permissions, sockets and persistence.
 - `src/`: React client, interactive SVG board and styles.
+- `src/audio/`: recorded sound effects and [source credits](src/audio/README.md).
 - `tests/`: rules and real Socket.IO multiplayer tests.
 - `public/assets/`: generated illustrations used by the application.
 - `ARTWORK.md`: image prompts and provenance.

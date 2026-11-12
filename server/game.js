@@ -14,9 +14,9 @@ const player = (g, id) => g.players.find(p => p.id === id);
 const vertex = (g, id) => g.board.vertices.find(v => v.id === id);
 const edge = (g, id) => g.board.edges.find(e => e.id === id);
 const hex = (g, id) => g.board.hexes.find(h => h.id === id);
-function addLog(g, text) {
+function addLog(g, text, cue) {
   const seq = (g.log.at(-1)?.seq ?? 0) + 1;
-  g.log.push({ text, at: Date.now(), seq });
+  g.log.push({ text, at: Date.now(), seq, ...(cue && { cue }) });
   if (g.log.length > 120) g.log.shift();
 }
 const setDeadline = g => { g.deadline = g.settings.turnSeconds ? Date.now() + g.settings.turnSeconds * 1000 : null; };
@@ -171,8 +171,8 @@ function updateScores(g) {
     p.visibleScore = 5 - p.settlementsLeft + 2 * (4 - p.citiesLeft) + (g.longestRoadHolder === p.id ? 2 : 0) + (g.largestArmyHolder === p.id ? 2 : 0);
     p.score = p.visibleScore + p.development.filter(c => c.type === 'victoryPoint').length;
   }
-  if (previousRoad !== g.longestRoadHolder && g.longestRoadHolder) addLog(g, `${player(g, g.longestRoadHolder).name} claimed Longest Route.`);
-  if (previousArmy !== g.largestArmyHolder && g.largestArmyHolder) addLog(g, `${player(g, g.largestArmyHolder).name} claimed Largest Army.`);
+  if (previousRoad !== g.longestRoadHolder && g.longestRoadHolder) addLog(g, `${player(g, g.longestRoadHolder).name} claimed Longest Route.`, 'longestRoute');
+  if (previousArmy !== g.largestArmyHolder && g.largestArmyHolder) addLog(g, `${player(g, g.largestArmyHolder).name} claimed Largest Army.`, 'largestArmy');
 }
 function checkVictory(g) {
   if (g.phase.startsWith('setup') || g.phase === 'finished') return;
@@ -275,7 +275,7 @@ function respondToTrade(g, p, type, offerId, moves) {
   moveResources(moves, playerHand(sender.id), playerHand(p.id), offer.give);
   moveResources(moves, playerHand(p.id), playerHand(sender.id), offer.want);
   g.tradeOffers.splice(index, 1);
-  addLog(g, `${p.name} traded with ${sender.name}.`);
+  addLog(g, `${p.name} traded with ${sender.name}.`, 'trade');
 }
 
 function applyAction(g, id, type, payload, moves) {
@@ -286,7 +286,7 @@ function applyAction(g, id, type, payload, moves) {
     requireThat(g.phase === 'discard' && g.discardRequired[id] > 0, 'You do not need to discard.');
     const resources = resourceMap(payload.resources);
     requireThat(sum(resources) === g.discardRequired[id], `Discard exactly ${g.discardRequired[id]} resources.`);
-    pay(g, p, resources); delete g.discardRequired[id]; addLog(g, `${p.name} discarded ${sum(resources)} resources.`);
+    pay(g, p, resources); delete g.discardRequired[id]; addLog(g, `${p.name} discarded ${sum(resources)} resources.`, 'discard');
     if (!Object.keys(g.discardRequired).length) activateRobber(g);
     return;
   }
@@ -299,7 +299,7 @@ function applyAction(g, id, type, payload, moves) {
       requireThat(setup || g.phase === 'action', 'You cannot build a settlement now.');
       requireThat(settlementTargets(g, id, setup).includes(payload.vertexId), 'That settlement position is not legal.');
       if (!setup) pay(g, p, COSTS.settlement, moves);
-      const v = vertex(g, payload.vertexId); v.building = { owner: id, type: 'settlement' }; addLog(g, `${p.name} built a settlement.`);
+      const v = vertex(g, payload.vertexId); v.building = { owner: id, type: 'settlement' }; addLog(g, `${p.name} built a settlement.`, 'settlement');
       if (setup) {
         g.setupVertexId = v.id;
         if (g.setupIndex >= g.players.length) for (const hId of v.hexIds) {
@@ -318,7 +318,7 @@ function applyAction(g, id, type, payload, moves) {
       requireThat(setup || g.phase === 'action', 'You cannot build a road now.');
       requireThat(roadTargets(g, id, setup).includes(payload.edgeId), 'That road position is not legal.');
       if (!setup && !g.roadBuildingRemaining) pay(g, p, COSTS.road, moves);
-      edge(g, payload.edgeId).owner = id; addLog(g, `${p.name} built a road.`);
+      edge(g, payload.edgeId).owner = id; addLog(g, `${p.name} built a road.`, 'road');
       if (setup) {
         g.setupIndex++;
         if (g.setupIndex === g.setupOrder.length) { updateScores(g); startTurn(g, 0); }
@@ -334,11 +334,11 @@ function applyAction(g, id, type, payload, moves) {
       requireThat(g.phase === 'action', 'You can upgrade only in your action phase.');
       const v = vertex(g, payload.vertexId);
       requireThat(v?.building?.owner === id && v.building.type === 'settlement' && p.citiesLeft > 0, 'Choose one of your settlements and an available city.');
-      pay(g, p, COSTS.city, moves); v.building.type = 'city'; addLog(g, `${p.name} upgraded a settlement to a city.`); break;
+      pay(g, p, COSTS.city, moves); v.building.type = 'city'; addLog(g, `${p.name} upgraded a settlement to a city.`, 'city'); break;
     }
     case 'rollDice': {
       requireThat(g.phase === 'roll', 'You have already rolled this turn.');
-      g.dice = [randomInt(1, 7), randomInt(1, 7)]; const total = g.dice[0] + g.dice[1]; addLog(g, `${p.name} rolled ${total}.`);
+      g.dice = [randomInt(1, 7), randomInt(1, 7)]; const total = g.dice[0] + g.dice[1]; addLog(g, `${p.name} rolled ${total}.`, total === 7 ? 'diceSeven' : 'dice');
       if (total === 7) {
         g.discardRequired = Object.fromEntries(g.players.filter(other => sum(other.resources) > g.settings.discardThreshold).map(other => [other.id, Math.floor(sum(other.resources) / 2)]));
         if (Object.keys(g.discardRequired).length) phase(g, 'discard'); else activateRobber(g);
@@ -353,7 +353,7 @@ function applyAction(g, id, type, payload, moves) {
       requireThat(robberTargets(g, id).includes(payload.hexId), 'Choose a different eligible hex for the robber.');
       g.robberHexId = payload.hexId;
       g.stealTargets = [...new Set(hex(g, payload.hexId).vertexIds.map(vId => vertex(g, vId).building?.owner).filter(owner => owner && owner !== id && sum(player(g, owner).resources) > 0))];
-      addLog(g, `${p.name} moved the robber.`);
+      addLog(g, `${p.name} moved the robber.`, 'robber');
       if (!g.stealTargets.length) phase(g, g.robberReturnPhase || 'action');
       else if (g.stealTargets.length === 1) { phase(g, 'steal'); applyAction(g, id, 'steal', { targetId: g.stealTargets[0] }, moves); }
       else phase(g, 'steal');
@@ -362,7 +362,7 @@ function applyAction(g, id, type, payload, moves) {
     case 'steal': {
       requireThat(g.phase === 'steal' && g.stealTargets.includes(payload.targetId), 'Choose an eligible opponent.');
       const target = player(g, payload.targetId), cards = RESOURCES.flatMap(r => Array(target.resources[r]).fill(r));
-      if (cards.length) { const r = cards[randomInt(cards.length)]; target.resources[r]--; p.resources[r]++; addLog(g, `${p.name} stole one resource from ${target.name}.`); }
+      if (cards.length) { const r = cards[randomInt(cards.length)]; target.resources[r]--; p.resources[r]++; addLog(g, `${p.name} stole one resource from ${target.name}.`, 'steal'); }
       g.stealTargets = []; phase(g, g.robberReturnPhase || 'action'); break;
     }
     case 'endTurn': requireThat(g.phase === 'action', 'Finish the current decision before ending your turn.'); nextTurn(g); break;
@@ -378,7 +378,7 @@ function applyAction(g, id, type, payload, moves) {
       pay(g, p, { [give]: cost }, moves); grant(g, p, received);
       moveResources(moves, bank, playerHand(id), received);
       const receivedText = RESOURCES.filter(r => received[r] > 0).map(r => `${received[r]} ${resourceName(r)}`).join(', ');
-      addLog(g, `${p.name} exchanged ${cost} ${resourceName(give)} for ${receivedText}.`); break;
+      addLog(g, `${p.name} exchanged ${cost} ${resourceName(give)} for ${receivedText}.`, 'trade'); break;
     }
     case 'offerTrade': {
       requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
@@ -395,7 +395,7 @@ function applyAction(g, id, type, payload, moves) {
       const card = { ...g.developmentDeck.pop(), turnBought: g.turn };
       p.development.push(card);
       moves.push({ from: bank, to: playerHand(id), kind: 'development', type: card.type, cardId: card.id, count: 1 });
-      addLog(g, `${p.name} bought a development card.`); break;
+      addLog(g, `${p.name} bought a development card.`, 'cardDraw'); break;
     }
     case 'playDevelopment': {
       requireThat(g.phase === 'roll' || g.phase === 'action', 'Play development cards before rolling or during your action phase.');
@@ -418,7 +418,7 @@ function applyAction(g, id, type, payload, moves) {
       } else if (card.type === 'knight') { p.knights++; activateRobber(g, returnPhase); }
       else fail('Unknown development card.');
       p.development = p.development.filter(c => c.id !== card.id); g.playedDevelopment.push(card); g.developmentPlayed = true;
-      addLog(g, `${p.name} played ${card.type === 'roadBuilding' ? 'Road Building' : card.type === 'invention' ? 'Invention' : card.type === 'knight' ? 'a Knight' : 'Monopoly'}.`); break;
+      addLog(g, `${p.name} played ${card.type === 'roadBuilding' ? 'Road Building' : card.type === 'invention' ? 'Invention' : card.type === 'knight' ? 'a Knight' : 'Monopoly'}.`, 'cardPlay'); break;
     }
     default: fail('Unknown game action.');
   }

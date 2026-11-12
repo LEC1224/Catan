@@ -64,6 +64,8 @@ import { KeyboardShortcuts, MatchShortcuts, shortcutProps, useDialogKeyboard } f
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
+import { SoundToggle, useDecisionWarning, useSoundEffects } from "./sound.jsx";
+import { lobbySoundCues } from "./sound-cues.js";
 
 const RES = ["wood", "brick", "wool", "wheat", "ore"];
 const META = {
@@ -226,10 +228,13 @@ function App() {
     [help, setHelp] = useState(false),
     [busy, setBusy] = useState("");
   const [name, setName] = useState(localStorage.getItem("catanName") || "");
+  const { enabled: soundEnabled, toggle: toggleSound, player: sound } = useSoundEffects();
+  useDecisionWarning(connected ? lobby?.game : null, lobby?.meId, sound);
   const cardDealStream = useRef(0);
   useEffect(() => {
     const s = io({ auth: { token: getToken() } });
     let stopBots;
+    let lastLobby = null;
     try { stopBots = attachBotController(s, setError); }
     catch { setError("Local bots require Web Workers. Try reloading in a current browser."); }
     setSocket(s);
@@ -238,7 +243,11 @@ function App() {
       setConnected(true);
       s.emit("getDirectory", {});
     });
-    s.on("disconnect", () => setConnected(false));
+    s.on("disconnect", () => {
+      lastLobby = null;
+      sound.stop();
+      setConnected(false);
+    });
     s.on("connect_error", (err) => {
       setConnected(false);
       setError(err.message || "Could not reach the game server. Reconnecting…");
@@ -246,11 +255,15 @@ function App() {
     s.on("session", (x) => setMeId(x.playerId));
     s.on("directory", setDirectory);
     s.on("lobby", (l) => {
+      const cues = lobbySoundCues(lastLobby, l);
+      lastLobby = l;
       setLobby(l && { ...l, cardDealStream: cardDealStream.current });
       if (l?.meId) setMeId(l.meId);
       if (l) history.replaceState({}, "", `?lobby=${l.id}`);
+      sound.play(...cues);
     });
-    s.on("chatMessage", (message) =>
+    s.on("chatMessage", (message) => {
+      if (lastLobby) sound.play("chat");
       setLobby((l) =>
         l
           ? {
@@ -261,13 +274,13 @@ function App() {
               ].slice(-100),
             }
           : l,
-      ),
-    );
+      );
+    });
     s.on("errorMessage", (x) =>
       setError(typeof x === "string" ? x : x.error || "Something went wrong."),
     );
     return () => { stopBots?.(); s.disconnect(); };
-  }, []);
+  }, [sound]);
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(""), 8000);
@@ -301,6 +314,8 @@ function App() {
           );
           return resolve(false);
         }
+        if (event === "createLobby" || event === "joinLobby") sound.play("join");
+        if (event === "setReady" && !payload.ready) sound.play("confirm");
         resolve(result);
       });
     });
@@ -319,6 +334,7 @@ function App() {
     try {
       await navigator.clipboard.writeText(link);
       setNotice("Invite link copied.");
+      sound.play("confirm");
     } catch {
       setNotice(`Lobby code: ${lobby.id}`);
     }
@@ -374,6 +390,7 @@ function App() {
           >
             <CircleHelp size={20} />
           </button>
+          <SoundToggle enabled={soundEnabled} onToggle={toggleSound} className="icon-button header-sound" />
         </div>
       </header>
       {!connected && (

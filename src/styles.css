@@ -2585,8 +2585,12 @@ select:disabled {
   .header-end > .icon-button {
     display: none;
   }
-  .header-end > .icon-button:first-of-type {
+  .header-end > .icon-button:first-of-type,
+  .header-end > .header-sound {
     display: inline-flex;
+  }
+  .site-header.in-game .header-end {
+    gap: 6px;
   }
   .home-page {
     padding: 27px 20px;

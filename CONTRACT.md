@@ -42,7 +42,8 @@ Finished lobby snapshots include `summary: {turns,pairedTurns,frameCount,history
 
 ## Game state exposed to client
 `phase`: setupSettlement | setupRoad | roll | action | discard | robber | steal | finished.
-`activePlayerId`, `turn`, `deadline` ms|null, `winnerId`, `dice` [int,int]|null, `robberHexId`, `longestRoadHolder`, `largestArmyHolder`, `log` [{text,at,seq}], `settings`, `pairedPlayer` boolean.
+`activePlayerId`, `turn`, `deadline` ms|null, `winnerId`, `dice` [int,int]|null, `robberHexId`, `longestRoadHolder`, `largestArmyHolder`, `log` [{text,at,seq,cue?}], `settings`, `pairedPlayer` boolean.
+Log entries have increasing `seq` values within the match even when the oldest entries are trimmed. Some public actions carry a `cue` for sound effects. Saved entries from older versions may omit both fields.
 `board`: `{hexes:[{id,x,y,terrain,number,vertexIds,edgeIds}],vertices:[{id,x,y,hexIds,edgeIds,neighborIds,building:null|{owner,type:'settlement'|'city'},port:null|'any'|'wood'|'brick'|'wool'|'wheat'|'ore'}],edges:[{id,a,b,owner:null|string}]}`. Hex radius 60, pointy top; x/y any values (UI calculates bounding box). Terrain values wood,brick,wool,wheat,ore,desert.
 `players`: [{id,name,color,resources:{wood,brick,wool,wheat,ore}|null,resourceCount,development:[{id,type,turnBought}]|null,developmentCount,knights,roadsLeft,settlementsLeft,citiesLeft,score,visibleScore,longestRoad}]. Only self resources/cards/true score visible.
 `bank` resource counts, `developmentRemaining`, `discardRequired` object playerId -> count, `stealTargets` player IDs, `tradeOffers` array of {id,from,give:resourceMap,want:resourceMap,declinedBy?:playerIds}, `roadBuildingRemaining` count, `developmentPlayed` bool. The sender sees `declinedBy`; a recipient who declines stops seeing that offer.
