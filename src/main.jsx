@@ -52,6 +52,8 @@ import {
   Bot,
 } from "lucide-react";
 import "./styles.css";
+import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
+import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
 
 const RES = ["wood", "brick", "wool", "wheat", "ore"];
 const META = {
@@ -1097,10 +1099,8 @@ function Board({ game, meId, mode, onAction }) {
     roads = new Set(
       active && (roadPhase || mode === "road") ? legal.roads : [],
     ),
-    cities = new Set(active && mode === "city" ? legal.cities : []),
-    robbers = new Set(
-      active && game.phase === "robber" ? legal.robberHexes : [],
-    );
+    cities = new Set(active && mode === "city" ? legal.cities : []);
+  const robber = robberPlacement(game, meId);
   const portGroups = [];
   const used = new Set();
   for (const v of b.vertices) {
@@ -1199,21 +1199,27 @@ function Board({ game, meId, mode, onAction }) {
           return `${h.x + Math.cos(a) * 60},${h.y + Math.sin(a) * 60}`;
         }).join(" ");
         const tile = META[h.terrain]?.tile || 0;
+        const state = robber?.state(h.id), selectable = state === "destination";
+        const hint = ROBBER_TILE_HINTS[state];
         return (
           <g
             key={h.id}
-            className={robbers.has(h.id) ? "hex-selectable" : ""}
+            className={selectable ? "hex-selectable" : ""}
             onClick={() =>
-              robbers.has(h.id) && onAction("moveRobber", { hexId: h.id })
+              selectable && onAction("moveRobber", { hexId: h.id })
             }
-            role={robbers.has(h.id) ? "button" : undefined}
-            tabIndex={robbers.has(h.id) ? 0 : undefined}
-            aria-label={`${META[h.terrain]?.name} ${h.number || ""}${robbers.has(h.id) ? ", move robber here" : ""}`}
+            role={selectable ? "button" : state ? "img" : undefined}
+            data-robber-state={state}
+            tabIndex={selectable ? 0 : undefined}
+            aria-label={[META[h.terrain]?.name, h.number || null, hint].filter(Boolean).join(", ")}
             onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && robbers.has(h.id))
+              if ((e.key === "Enter" || e.key === " ") && selectable) {
+                e.preventDefault();
                 onAction("moveRobber", { hexId: h.id });
+              }
             }}
           >
+            {hint && !selectable && <title>{hint}</title>}
             <polygon
               points={points}
               fill={META[h.terrain]?.color}
@@ -1237,16 +1243,7 @@ function Board({ game, meId, mode, onAction }) {
               </svg>
               <polygon points={points} fill="#173b2b" opacity=".07" />
             </g>
-            {robbers.has(h.id) && (
-              <polygon
-                points={points}
-                fill="#e9d18d"
-                fillOpacity=".1"
-                stroke="#ffe3a5"
-                strokeWidth="3"
-                className="pulse-stroke"
-              />
-            )}
+            <RobberHexMark state={state} points={points} x={h.x} y={h.y} />
             {h.number && (
               <g transform={`translate(${h.x},${h.y + 2})`}>
                 <circle r="18.5" fill="#0d2928" opacity=".3" cy="3" />
@@ -1860,7 +1857,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
             : game.phase === "discard"
               ? "Waiting for players to return resources."
               : game.phase === "robber"
-                ? "Choose a hex to move the robber."
+                ? "Move the robber to a highlighted tile."
                 : game.phase === "steal"
                   ? "Choose a player to steal from."
                   : mode
@@ -2031,6 +2028,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   ? phaseText
                   : "Waiting for the active player."}
               </span>
+              {myTurn && game.phase === "robber" && game.settings.friendlyRobber && <FriendlyRobberHint />}
             </div>
             {seconds !== null && (
               <span className={`turn-clock ${seconds <= 15 ? "urgent" : ""}`}>

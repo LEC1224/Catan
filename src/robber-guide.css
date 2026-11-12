@@ -1,0 +1,15 @@
+.robber-tile-outline { fill: none; stroke: #241c11; stroke-width: 4.8px; }
+.robber-tile-highlight { fill: #ffe9a5; fill-opacity: .12; stroke: #ffe4a0; stroke-width: 2.5px; }
+.hex-selectable:is(:hover, :focus-visible) .robber-tile-highlight { fill-opacity: .35; stroke: #fff6d6; }
+.robber-tile-muted { fill: #141715; fill-opacity: .49; stroke: #d0b797; stroke-width: 1.5px; stroke-dasharray: 3 3; }
+.robber-mark-occupied .robber-tile-muted { fill-opacity: .24; stroke: #b6a48c; }
+.robber-friendly-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  line-height: 1.25;
+}
+.robber-friendly-note > svg { flex: none; color: #bc8d4e; }
+.robber-friendly-note strong { color: inherit; font: inherit; font-weight: 750; }
+.match-toolbar .turn-state > .robber-friendly-note { color: #f2d29b; }
+.match-toolbar .robber-friendly-note > svg { color: #e6bd7a; }
