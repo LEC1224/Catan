@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { Sheep } from "./sheep-icon.js";
 import "./styles.css";
+import { CardDealLayer, PlayerHandBacks } from "./card-deals.jsx";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
@@ -213,6 +214,7 @@ function App() {
     [help, setHelp] = useState(false),
     [busy, setBusy] = useState("");
   const [name, setName] = useState(localStorage.getItem("catanName") || "");
+  const cardDealStream = useRef(0);
   useEffect(() => {
     const s = io({ auth: { token: getToken() } });
     let stopBots;
@@ -220,6 +222,7 @@ function App() {
     catch { setError("Local bots require Web Workers. Try reloading in a current browser."); }
     setSocket(s);
     s.on("connect", () => {
+      cardDealStream.current++;
       setConnected(true);
       s.emit("getDirectory", {});
     });
@@ -231,7 +234,7 @@ function App() {
     s.on("session", (x) => setMeId(x.playerId));
     s.on("directory", setDirectory);
     s.on("lobby", (l) => {
-      setLobby(l);
+      setLobby(l && { ...l, cardDealStream: cardDealStream.current });
       if (l?.meId) setMeId(l.meId);
       if (l) history.replaceState({}, "", `?lobby=${l.id}`);
     });
@@ -1227,6 +1230,7 @@ function Board({ game, meId, mode, previewCities, onAction }) {
             <polygon
               points={points}
               fill={META[h.terrain]?.color}
+              data-deal-tile={h.id}
               stroke="#d2bc83"
               strokeWidth="3"
               filter="url(#tile-shadow)"
@@ -1722,6 +1726,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
     [dev, setDev] = useState(null),
     [sidebar, setSidebar] = useState("activity"),
     [now, setNow] = useState(Date.now());
+  const matchPage = useRef(null);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -1790,7 +1795,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
       me.id !== offered.from &&
       RES.every((r) => (me.resources?.[r] || 0) >= (offered.want?.[r] || 0));
   return (
-    <main className="game-page">
+    <main className="game-page" ref={matchPage}>
       <div className="game-topline">
         <div>
           <span className="eyebrow">
@@ -1864,14 +1869,8 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   </span>
                 </div>
                 <div className="player-stats">
-                  <span title="Resource cards">
-                    <Package size={14} />
-                    {p.resourceCount}
-                  </span>
-                  <span title="Development cards">
-                    <ScrollText size={14} />
-                    {p.developmentCount}
-                  </span>
+                  <PlayerHandBacks playerId={p.id} kind="resource" count={p.resourceCount} />
+                  <PlayerHandBacks playerId={p.id} kind="development" count={p.developmentCount} />
                   <span title="Played knights">
                     <Shield size={14} />
                     {p.knights}
@@ -1905,13 +1904,13 @@ function Game({ lobby, meId, command, busy, onHelp }) {
             <span className="eyebrow">THE BANK</span>
             <div>
               {RES.map((r) => (
-                <span key={r} title={`${META[r].name} remaining`}>
+                <span key={r} data-deal-bank={r} title={`${META[r].name} remaining`}>
                   <ResourceIcon resource={r} size={16} />
                   <strong>{game.bank[r]}</strong>
                 </span>
               ))}
             </div>
-            <small>
+            <small data-deal-bank="development">
               <ScrollText size={13} />
               {game.developmentRemaining} development cards left
             </small>
@@ -2103,10 +2102,11 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                 <LockKeyhole size={11} />
               </span>
             </div>
-            <div className="hand-cards">
+            <div className="hand-cards" data-deal-hand="resource">
               {RES.map((r) => (
                 <div
                   key={r}
+                  data-deal-pile={r}
                   className={`resource-card ${!me.resources?.[r] ? "empty" : ""}`}
                 >
                   <AtlasArt terrain={r} />
@@ -2126,7 +2126,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   )}
                 </div>
               ))}
-              <div className="development-hand">
+              <div className="development-hand" data-deal-hand="development">
                 {me.development?.length ? (
                   me.development.map((card) => {
                     const meta = DEV_META[card.type] || DEV_META.knight,
@@ -2137,6 +2137,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                     return (
                       <button
                         key={card.id}
+                        data-deal-card={card.id}
                         className={`development-card ${card.type === "victoryPoint" ? "victory" : ""}`}
                         disabled={!available}
                         onClick={() => setDev(card)}
@@ -2195,6 +2196,8 @@ function Game({ lobby, meId, command, busy, onHelp }) {
           )}
         </aside>
       </div>
+      <CardDealLayer scope={matchPage} matchId={lobby.matchId || lobby.id} stream={lobby.cardDealStream} game={game} me={me}
+        resourceMeta={META} developmentMeta={DEV_META} />
       {abandon && (
         <Modal title="End current game?" onClose={() => setAbandon(false)}>
           <p className="modal-description">

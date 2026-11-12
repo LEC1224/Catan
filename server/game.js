@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { bankTradeRate, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from '../shared/trades.js';
+import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { wool: 1, wheat: 1, ore: 1 } };
@@ -90,6 +91,34 @@ function resourceMap(value, { nonzero = false } = {}) {
 function canPay(p, cost) { return Object.entries(cost).every(([r, n]) => p.resources[r] >= n); }
 function pay(g, p, cost) { requireThat(canPay(p, cost), 'You do not have enough resources.'); for (const [r, n] of Object.entries(cost)) { p.resources[r] -= n; g.bank[r] += n; } }
 function grant(g, p, map) { for (const [r, n] of Object.entries(map)) { requireThat(g.bank[r] >= n, `The supply does not have enough ${r}.`); g.bank[r] -= n; p.resources[r] += n; } }
+function produceResources(g, total, moves) {
+  const due = Object.fromEntries(RESOURCES.map(r => [r, new Map()]));
+  for (const h of g.board.hexes) if (h.number === total && h.id !== g.robberHexId) {
+    const recipients = due[h.terrain];
+    for (const vId of h.vertexIds) {
+      const building = vertex(g, vId).building;
+      if (!building) continue;
+      if (!recipients.has(building.owner)) recipients.set(building.owner, new Map());
+      const tiles = recipients.get(building.owner);
+      tiles.set(h.id, (tiles.get(h.id) ?? 0) + (building.type === 'city' ? 2 : 1));
+    }
+  }
+  for (const r of RESOURCES) {
+    const recipients = due[r];
+    const demand = [...recipients.values()].flatMap(tiles => [...tiles.values()]).reduce((n, count) => n + count, 0);
+    if (demand > g.bank[r] && recipients.size > 1) {
+      addLog(g, `The ${r} supply cannot cover production; nobody receives ${r}.`);
+      continue;
+    }
+    for (const [id, tiles] of recipients) for (const [hexId, count] of tiles) {
+      const paid = Math.min(count, g.bank[r]);
+      if (!paid) break;
+      const resources = { [r]: paid };
+      grant(g, player(g, id), resources);
+      moveResources(moves, tile(hexId), playerHand(id), resources);
+    }
+  }
+}
 function enforceHandLimits(g) {
   if (!g.settings.hardHandLimit) return;
   for (const p of g.players) {
@@ -205,7 +234,7 @@ export function createGame(players, settings = {}) {
   return g;
 }
 
-function respondToTrade(g, p, type, offerId) {
+function respondToTrade(g, p, type, offerId, moves) {
   // Turning an offer down doesn't spend cards or interrupt a pending board action.
   if (type !== 'declineTrade') requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
   // Older clients can accept or withdraw the only offer they can see.
@@ -234,11 +263,13 @@ function respondToTrade(g, p, type, offerId) {
     p.resources[r] += offer.give[r] - offer.want[r];
     sender.resources[r] += offer.want[r] - offer.give[r];
   }
+  moveResources(moves, playerHand(sender.id), playerHand(p.id), offer.give);
+  moveResources(moves, playerHand(p.id), playerHand(sender.id), offer.want);
   g.tradeOffers.splice(index, 1);
   addLog(g, `${p.name} traded with ${sender.name}.`);
 }
 
-function applyAction(g, id, type, payload) {
+function applyAction(g, id, type, payload, moves) {
   const p = player(g, id);
   requireThat(p, 'You are not a player in this game.');
   requireThat(g.phase !== 'finished', 'This game has ended.');
@@ -250,7 +281,7 @@ function applyAction(g, id, type, payload) {
     if (!Object.keys(g.discardRequired).length) activateRobber(g);
     return;
   }
-  if (['acceptTrade', 'declineTrade', 'cancelTrade'].includes(type)) return respondToTrade(g, p, type, payload.offerId);
+  if (['acceptTrade', 'declineTrade', 'cancelTrade'].includes(type)) return respondToTrade(g, p, type, payload.offerId, moves);
   requireThat(g.activePlayerId === id, 'Wait for your turn.');
   if (g.roadBuildingRemaining) requireThat(type === 'placeRoad', 'Finish placing your free roads first.');
   switch (type) {
@@ -262,7 +293,13 @@ function applyAction(g, id, type, payload) {
       const v = vertex(g, payload.vertexId); v.building = { owner: id, type: 'settlement' }; addLog(g, `${p.name} built a settlement.`);
       if (setup) {
         g.setupVertexId = v.id;
-        if (g.setupIndex >= g.players.length) { for (const hId of v.hexIds) { const h = hex(g, hId); if (h.terrain !== 'desert') grant(g, p, { [h.terrain]: 1 }); } }
+        if (g.setupIndex >= g.players.length) for (const hId of v.hexIds) {
+          const h = hex(g, hId);
+          if (h.terrain === 'desert') continue;
+          const resources = { [h.terrain]: 1 };
+          grant(g, p, resources);
+          moveResources(moves, tile(h.id), playerHand(id), resources);
+        }
         phase(g, 'setupRoad');
       }
       break;
@@ -297,15 +334,7 @@ function applyAction(g, id, type, payload) {
         g.discardRequired = Object.fromEntries(g.players.filter(other => sum(other.resources) > g.settings.discardThreshold).map(other => [other.id, Math.floor(sum(other.resources) / 2)]));
         if (Object.keys(g.discardRequired).length) phase(g, 'discard'); else activateRobber(g);
       } else {
-        const due = Object.fromEntries(g.players.map(other => [other.id, emptyResources()]));
-        for (const h of g.board.hexes) if (h.number === total && h.id !== g.robberHexId) {
-          for (const vId of h.vertexIds) { const b = vertex(g, vId).building; if (b) due[b.owner][h.terrain] += b.type === 'city' ? 2 : 1; }
-        }
-        for (const r of RESOURCES) {
-          const recipients = g.players.filter(other => due[other.id][r] > 0), demand = recipients.reduce((n, other) => n + due[other.id][r], 0);
-          if (demand > g.bank[r] && recipients.length > 1) addLog(g, `The ${r} supply cannot cover production; nobody receives ${r}.`);
-          else for (const other of recipients) grant(g, other, { [r]: Math.min(due[other.id][r], g.bank[r]) });
-        }
+        produceResources(g, total, moves);
         phase(g, 'action');
       }
       break;
@@ -317,7 +346,7 @@ function applyAction(g, id, type, payload) {
       g.stealTargets = [...new Set(hex(g, payload.hexId).vertexIds.map(vId => vertex(g, vId).building?.owner).filter(owner => owner && owner !== id && sum(player(g, owner).resources) > 0))];
       addLog(g, `${p.name} moved the robber.`);
       if (!g.stealTargets.length) phase(g, g.robberReturnPhase || 'action');
-      else if (g.stealTargets.length === 1) { phase(g, 'steal'); applyAction(g, id, 'steal', { targetId: g.stealTargets[0] }); }
+      else if (g.stealTargets.length === 1) { phase(g, 'steal'); applyAction(g, id, 'steal', { targetId: g.stealTargets[0] }, moves); }
       else phase(g, 'steal');
       break;
     }
@@ -335,7 +364,11 @@ function applyAction(g, id, type, payload) {
       requireThat(Number.isInteger(amount) && amount >= 1 && amount <= 24, 'Choose a valid trade quantity.');
       const ratio = bankTradeRate(g.board.vertices, id, give);
       requireThat(g.bank[receive] >= amount, `The supply does not have enough ${receive}.`);
-      pay(g, p, { [give]: ratio * amount }); grant(g, p, { [receive]: amount }); addLog(g, `${p.name} exchanged ${ratio * amount} ${give} for ${amount} ${receive}.`); break;
+      const given = { [give]: ratio * amount }, received = { [receive]: amount };
+      pay(g, p, given); grant(g, p, received);
+      moveResources(moves, playerHand(id), bank, given);
+      moveResources(moves, bank, playerHand(id), received);
+      addLog(g, `${p.name} exchanged ${ratio * amount} ${give} for ${amount} ${receive}.`); break;
     }
     case 'offerTrade': {
       requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
@@ -348,7 +381,11 @@ function applyAction(g, id, type, payload) {
     case 'buyDevelopment': {
       requireThat(g.phase === 'action', 'Buy development cards during your action phase.');
       requireThat(g.developmentDeck.length > 0, 'The development deck is empty.');
-      pay(g, p, COSTS.development); p.development.push({ ...g.developmentDeck.pop(), turnBought: g.turn }); addLog(g, `${p.name} bought a development card.`); break;
+      pay(g, p, COSTS.development);
+      const card = { ...g.developmentDeck.pop(), turnBought: g.turn };
+      p.development.push(card);
+      moves.push({ from: bank, to: playerHand(id), kind: 'development', type: card.type, cardId: card.id, count: 1 });
+      addLog(g, `${p.name} bought a development card.`); break;
     }
     case 'playDevelopment': {
       requireThat(g.phase === 'roll' || g.phase === 'action', 'Play development cards before rolling or during your action phase.');
@@ -360,6 +397,7 @@ function applyAction(g, id, type, payload) {
       const returnPhase = g.phase;
       if (card.type === 'invention') {
         const map = resourceMap(payload.resources); requireThat(sum(map) === 2, 'Choose exactly two resources.'); grant(g, p, map);
+        moveResources(moves, bank, playerHand(id), map);
       } else if (card.type === 'monopoly') {
         requireThat(RESOURCES.includes(payload.resource), 'Choose a resource to monopolize.');
         let count = 0; for (const other of g.players) if (other.id !== id) { count += other.resources[payload.resource]; other.resources[payload.resource] = 0; }
@@ -381,8 +419,10 @@ export function action(game, playerId, type, payload = {}) {
   const draft = structuredClone(game);
   if (!draft.tradeOffers) draft.tradeOffers = openTradeOffers(draft).map((offer) => ({ ...offer, declinedBy: [] }));
   delete draft.tradeOffer;
-  applyAction(draft, playerId, type, payload);
+  const moves = [];
+  applyAction(draft, playerId, type, payload, moves);
   enforceHandLimits(draft);
+  recordDeal(draft, type, moves);
   draft.tradeOffers = draft.tradeOffers.filter((offer) => {
     const sender = player(draft, offer.from);
     return sender && canPay(sender, offer.give);
@@ -394,7 +434,8 @@ export function action(game, playerId, type, payload = {}) {
 }
 
 export function viewGame(g, playerId) {
-  const { developmentDeck, playedDevelopment, setupOrder, setupIndex, setupVertexId, robberReturnPhase, roadBuildingReturnPhase, primaryIndex, ...visible } = structuredClone(g);
+  const { developmentDeck, playedDevelopment, setupOrder, setupIndex, setupVertexId, robberReturnPhase, roadBuildingReturnPhase, primaryIndex, cardDeals, ...visible } = structuredClone(g);
+  visible.cardDeals = viewCardDeals(cardDeals, playerId);
   visible.tradeOffers = openTradeOffers(visible).flatMap(({ declinedBy = [], ...offer }) => {
     if (offer.from === playerId) return [{ ...offer, declinedBy }];
     return declinedBy.includes(playerId) ? [] : [offer];

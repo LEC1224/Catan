@@ -1,0 +1,114 @@
+.deal-hand-backs { font-variant-numeric: tabular-nums; }
+.deal-mini-fan {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 23px;
+  flex: none;
+}
+.deal-mini-fan[data-empty="true"] { opacity: .38; }
+.deal-mini-card {
+  position: absolute;
+  display: block;
+  top: 1px;
+  left: calc(50% - 6.5px);
+  width: 13px;
+  height: 18px;
+}
+.deal-card-back {
+  --deal-rim: #e1b773;
+  --deal-line: #e4b973ba;
+  --deal-base: #734626;
+  --deal-pattern: repeating-linear-gradient(45deg, #f5cf8435 0 6%, transparent 6% 23%),
+    repeating-linear-gradient(-45deg, #f5cf8435 0 6%, transparent 6% 23%);
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: 9%;
+  background: linear-gradient(150deg, #ffe1a72b, #11131d40), var(--deal-pattern), var(--deal-base);
+  box-shadow: inset 0 0 0 1px var(--deal-rim), 0 1px 3px #10150cb3;
+}
+.deal-card-back[data-kind="development"] {
+  --deal-rim: #a0d7d6;
+  --deal-line: #a5dde8c9;
+  --deal-base: #26576c;
+  --deal-pattern: repeating-radial-gradient(ellipse at center, #92c1dc40 0 6%, transparent 8% 24%);
+}
+.deal-card-back::before, .deal-card-back::after { content: ""; position: absolute; }
+.deal-card-back::before { inset: 12%; border: 1px solid var(--deal-line); border-radius: 10%; }
+.deal-card-back::after {
+  inset: 38% 34%;
+  background: var(--deal-rim);
+  border-radius: 12%;
+  transform: rotate(45deg);
+}
+.deal-card-back[data-kind="development"]::after { border-radius: 50%; }
+.deal-mini-fan[data-empty="true"] .deal-card-back { background: transparent; box-shadow: none; border: 1px dashed var(--deal-rim); }
+.deal-mini-fan[data-empty="true"] .deal-card-back::before,
+.deal-mini-fan[data-empty="true"] .deal-card-back::after { display: none; }
+
+[data-deal-pending] { visibility: hidden; }
+.fan-face[data-deal-animated] { animation: none; }
+.fan-slot:has([data-deal-pending]) { transition: none; }
+.fan-target:focus-visible [data-deal-pending] { visibility: visible; }
+.deal-layer { position: fixed; z-index: 12; inset: 0; pointer-events: none; overflow: hidden; }
+.deal-flying-card { display: block; position: absolute; left: 0; top: 0; opacity: 0; perspective: 500px; }
+.deal-card-turner, .deal-card-plane { position: absolute; display: block; inset: 0; }
+.deal-card-turner { transform-style: preserve-3d; }
+.deal-card-plane { backface-visibility: hidden; }
+.deal-card-plane > .card-face { width: 100%; height: 100%; }
+.deal-reverse { transform: rotateY(180deg); }
+.deal-bundle-count {
+  position: absolute;
+  top: 4%;
+  right: 4%;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #172b25;
+  color: #fff2ce;
+  font: 700 14px/1.15 system-ui, sans-serif;
+}
+.deal-simple-face {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid #b89a60;
+  border-radius: 5px;
+  background: #f4e5bd;
+  color: var(--deal-ink, #4c553a);
+  box-shadow: 0 3px 8px #132318a8;
+}
+.deal-simple-face > span {
+  position: absolute;
+  inset: 4px 4px 24%;
+  background: url("/assets/terrain-atlas.png") no-repeat;
+  background-size: 300% 200%;
+}
+.deal-simple-face > svg { position: absolute; left: 6px; top: 6px; padding: 2px; border-radius: 2px; background: #faebc5; }
+.deal-simple-face > strong { position: absolute; inset: auto 3px 3px; color: #3e321f; text-align: center; font: 700 12px/1.2 Georgia, serif; }
+.deal-relays {
+  position: absolute;
+  inset-inline: 8px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.deal-relay {
+  display: inline-flex;
+  align-items: center;
+  max-width: 150px;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid #a48555;
+  border-radius: 4px;
+  background: #21382f;
+  color: #f8e5bc;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.deal-relay-icon { position: relative; flex: none; width: 13px; height: 17px; filter: drop-shadow(0 0 2px var(--deal-player, transparent)); }
