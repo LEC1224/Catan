@@ -17,7 +17,6 @@ import {
   Globe2,
   Hammer,
   HelpCircle,
-  Leaf,
   LockKeyhole,
   Map,
   MessageSquare,
@@ -51,6 +50,7 @@ import {
   Trophy,
   Bot,
 } from "lucide-react";
+import { Sheep } from "./sheep-icon.js";
 import "./styles.css";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
@@ -60,7 +60,7 @@ const RES = ["wood", "brick", "wool", "wheat", "ore"];
 const META = {
   wood: { name: "Wood", icon: Trees, color: "#42714d", tile: 0 },
   wheat: { name: "Wheat", icon: Wheat, color: "#ba9140", tile: 1 },
-  wool: { name: "Wool", icon: Leaf, color: "#8b9b59", tile: 2 },
+  wool: { name: "Wool", icon: Sheep, color: "#8b9b59", tile: 2 },
   brick: { name: "Brick", icon: Package, color: "#b46c48", tile: 3 },
   ore: { name: "Ore", icon: Mountain, color: "#727d87", tile: 4 },
   desert: { name: "Desert", icon: Compass, color: "#c7ad75", tile: 5 },
