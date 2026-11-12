@@ -13,6 +13,7 @@ All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser 
 - `setReady` `{ready}`
 - `startGame` `{}` host only (2+ players, others ready)
 - `gameAction` `{type,...payload}` invokes action(game, playerId,type,payload)
+- `seekReplay` `{matchId,step}` accepts a zero-based recorded step from any seated player after the match finishes. The resulting `lobby.replay` cursor is shared, including after reconnect or restart.
 - `chat` `{text}` -> broadcast `chatMessage` `{id,name,text,at}`; lobby contains `messages` array
 - `returnToLobby` `{}` host only after finished
 - `abandonGame` `{}` host only, ends an active match and returns all players to waiting lobby
@@ -32,11 +33,15 @@ All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser 
 `maxPlayers` default 4 range 2–6. `extendedBoard` default false automatically true when maxPlayers becomes 5/6 unless explicitly provided; host can disable. `victoryPoints` default 10 range 3–20. `discardThreshold` default 7 range 3–30. `hardHandLimit` default 0 (off), range 0–50, optional variant excess auto returns deterministically. `turnSeconds` default 120 (0 unlimited), range 0 or 30–600. `friendlyRobber` default false prevents robbing players below 3 visible points. `balancedNumbers` default true. `allowPlayerTrading` default true. `pairedTurns` default true for 5/6, false effect below 5; use modern paired second action phase no player trades. `seed` optional string for reproducible board.
 
 ## Engine API (server/game.js)
-Exports `createGame(players,settings)`, `action(game,playerId,type,payload={})`, `viewGame(game,playerId)`, `tick(game,now=Date.now(),excludedPlayers=[])`. Mutate game in action/tick, throw Error for invalid. tick returns boolean changed. The server excludes bot IDs from timeout decisions, including mixed human/bot discards. Engine keeps plain JSON serializable state. Players have id,name,color. No socket dependencies.
+Exports `createGame(players,settings)`, `action(game,playerId,type,payload={})`, `viewGame(game,playerId)`, `tick(game,now=Date.now(),excludedPlayers=[],onMove?)`. Mutate game in action/tick, throw Error for invalid. tick returns boolean changed. Its optional callback receives `(playerId,type,previousLogSequence)` after each successful automatic action. The server excludes bot IDs from timeout decisions, including mixed human/bot discards. Engine keeps plain JSON serializable state. Players have id,name,color. No socket dependencies.
+
+## Match review
+
+Finished lobby snapshots include `summary: {turns,pairedTurns,frameCount,history,scores,timeline,moments}`. Score samples and moments reference recorded step indices. Starting replay exposes only the currently selected `replay: {step,playerId,frame,position}`. The frame contains dice, robber, active player, points, public inventory counts, and the move description. The position contains building and road tuples to apply to the static board. The full recording is server-side, excluded from live snapshots, and never stores hand contents or card IDs. Older saves can report partial or unavailable history. The host returning to the lobby clears the recording and cursor.
 
 ## Game state exposed to client
 `phase`: setupSettlement | setupRoad | roll | action | discard | robber | steal | finished.
-`activePlayerId`, `turn`, `deadline` ms|null, `winnerId`, `dice` [int,int]|null, `robberHexId`, `longestRoadHolder`, `largestArmyHolder`, `log` [{text,at}], `settings`, `pairedPlayer` boolean.
+`activePlayerId`, `turn`, `deadline` ms|null, `winnerId`, `dice` [int,int]|null, `robberHexId`, `longestRoadHolder`, `largestArmyHolder`, `log` [{text,at,seq}], `settings`, `pairedPlayer` boolean.
 `board`: `{hexes:[{id,x,y,terrain,number,vertexIds,edgeIds}],vertices:[{id,x,y,hexIds,edgeIds,neighborIds,building:null|{owner,type:'settlement'|'city'},port:null|'any'|'wood'|'brick'|'wool'|'wheat'|'ore'}],edges:[{id,a,b,owner:null|string}]}`. Hex radius 60, pointy top; x/y any values (UI calculates bounding box). Terrain values wood,brick,wool,wheat,ore,desert.
 `players`: [{id,name,color,resources:{wood,brick,wool,wheat,ore}|null,resourceCount,development:[{id,type,turnBought}]|null,developmentCount,knights,roadsLeft,settlementsLeft,citiesLeft,score,visibleScore,longestRoad}]. Only self resources/cards/true score visible.
 `bank` resource counts, `developmentRemaining`, `discardRequired` object playerId -> count, `stealTargets` player IDs, `tradeOffers` array of {id,from,give:resourceMap,want:resourceMap,declinedBy?:playerIds}, `roadBuildingRemaining` count, `developmentPlayed` bool. The sender sees `declinedBy`; a recipient who declines stops seeing that offer.

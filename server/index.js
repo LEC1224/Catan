@@ -6,7 +6,7 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGame, action, viewGame, tick } from './game.js';
-import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary } from './match-recording.js';
+import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary, viewReplay } from './match-recording.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
@@ -80,10 +80,11 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       botControllers.set(lobby.id, controller);
     }
     const bots = lobby.players.filter(p => p.isBot);
-    const { recording, ...visibleLobby } = lobby;
+    const { recording, replay, ...visibleLobby } = lobby;
     const summary = lobby.status === 'finished' ? matchSummary(lobby.game, recording) : null;
+    const replayView = summary ? viewReplay(recording, replay) : null;
     for (const player of lobby.players) for (const socketId of sessions.get(player.id) || []) {
-      io.to(socketId).emit('lobby', { ...visibleLobby, summary, botsPaused: bots.length > 0 && !controllerId, meId: player.id, game: lobby.game ? viewGame(lobby.game, player.id) : null });
+      io.to(socketId).emit('lobby', { ...visibleLobby, summary, replay: replayView, botsPaused: bots.length > 0 && !controllerId, meId: player.id, game: lobby.game ? viewGame(lobby.game, player.id) : null });
       io.to(socketId).emit('botState', socketId === controllerId && bots.length && lobby.status === 'playing' ? {
         lobbyId: lobby.id, matchId: lobby.matchId, lease: controller.lease, revision: lobby.botRevision || 0,
         bots: bots.map(bot => ({ id: bot.id, difficulty: bot.difficulty, game: viewGame(lobby.game, bot.id) })),
@@ -194,6 +195,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       const first = randomInt(lobby.players.length);
       const seating = [...lobby.players.slice(first), ...lobby.players.slice(0, first)];
       lobby.game = createGame(seating, lobby.settings); lobby.recording = beginRecording(lobby.game);
+      delete lobby.replay;
       lobby.matchId = randomBytes(12).toString('hex'); lobby.botRevision = 0; lobby.status = 'playing'; emitLobby(lobby); broadcastDirectory();
     });
     on('gameAction', payload => {
@@ -220,11 +222,20 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     });
     on('kickPlayer', payload => { const lobby = getLobby(playerId); requireHost(lobby, playerId); waiting(lobby); if (payload.playerId === playerId) throw Error('Use Leave lobby instead.'); if (!lobby.players.some(p => p.id === payload.playerId)) throw Error('Player not found.'); releasePlayer(lobby, payload.playerId, true); });
     on('transferHost', payload => { const lobby = getLobby(playerId); requireHost(lobby, playerId); const next = lobby.players.find(p => p.id === payload.playerId && !p.isBot && p.connected); if (!next) throw Error('Choose a connected human player.'); lobby.hostId = next.id; next.ready = true; emitLobby(lobby); broadcastDirectory(); });
-    on('returnToLobby', () => { const lobby = getLobby(playerId); requireHost(lobby, playerId); if (lobby.status !== 'finished') throw Error('Finish the current match first.'); lobby.game = null; delete lobby.recording; lobby.status = 'waiting'; resetReady(lobby); emitLobby(lobby); broadcastDirectory(); });
+    on('seekReplay', ({ matchId, step }) => {
+      const lobby = getLobby(playerId);
+      if (lobby.status !== 'finished' || !matchId || matchId !== lobby.matchId) throw Error('This match is not available to replay.');
+      if (!hasRecording(lobby.recording)) throw Error('This match has no recorded moves.');
+      if (!Number.isInteger(step) || step < 0 || step >= lobby.recording.frames.length) throw Error('Choose a recorded move.');
+      if (lobby.replay?.step === step) return;
+      lobby.replay = { step, playerId };
+      emitLobby(lobby);
+    });
+    on('returnToLobby', () => { const lobby = getLobby(playerId); requireHost(lobby, playerId); if (lobby.status !== 'finished') throw Error('Finish the current match first.'); lobby.game = null; delete lobby.recording; delete lobby.replay; lobby.status = 'waiting'; resetReady(lobby); emitLobby(lobby); broadcastDirectory(); });
     on('abandonGame', () => {
       const lobby = getLobby(playerId); requireHost(lobby, playerId);
       if (lobby.status !== 'playing') throw Error('There is no active match to end.');
-      lobby.game = null; delete lobby.recording; lobby.status = 'waiting'; resetReady(lobby);
+      lobby.game = null; delete lobby.recording; delete lobby.replay; lobby.status = 'waiting'; resetReady(lobby);
       lobby.messages.push({ id: randomBytes(6).toString('hex'), name: 'System', text: 'The host ended the match. You can configure a new game in the lobby.', at: Date.now() });
       lobby.messages = lobby.messages.slice(-80); emitLobby(lobby); broadcastDirectory();
     });

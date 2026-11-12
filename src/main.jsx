@@ -1747,7 +1747,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
       </main>
     );
   if (game.phase === "finished")
-    return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave }} />;
+    return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave }} Board={Board} resourceMeta={META} />;
   const action = async (type, payload = {}) => {
     const result = await command("gameAction", { type, ...payload });
     if (

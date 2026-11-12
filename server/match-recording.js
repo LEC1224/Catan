@@ -58,6 +58,14 @@ export function appendFrame(recording, captured) {
   recording.frames.push({ ...frame, position: recording.positions.length - 1 });
 }
 
+export function viewReplay(recording, replay) {
+  if (!replay || !hasRecording(recording)) return null;
+  const frame = recording.frames[replay.step];
+  if (!frame) return null;
+  const { position, ...snapshot } = frame;
+  return { step: replay.step, playerId: replay.playerId, frame: snapshot, position: recording.positions[position] };
+}
+
 function scoreLeaders(totals) {
   const highest = Math.max(...totals);
   return totals.flatMap((total, index) => total === highest ? [index] : []);

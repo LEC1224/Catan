@@ -1,5 +1,6 @@
-import React, { useId, useState } from "react";
-import { Building2, Copy, Flag, House, LogOut, RotateCcw, Route, ScrollText, Shield, Trophy } from "lucide-react";
+import React, { useEffect, useId, useRef, useState } from "react";
+import { Building2, ChartNoAxesCombined, ChevronRight, Copy, Film, Flag, House, LogOut, RotateCcw, Route, ScrollText, Shield, Trophy } from "lucide-react";
+import { PlayerMark, ReplayView, turnLabel } from "./match-replay.jsx";
 import "./match-results.css";
 
 const columns = [
@@ -10,10 +11,6 @@ const columns = [
   ["army", "Largest Army", Shield],
 ];
 const momentIcons = { city: Building2, route: Route, army: Shield, lead: Flag, win: Trophy };
-
-export function PlayerMark({ player }) {
-  return <span className="result-player-mark" style={{ "--player": player.color }} aria-hidden="true" />;
-}
 
 function ScoreBreakdown({ scores, players, winnerId }) {
   const sorted = [...scores].sort((a, b) =>
@@ -51,9 +48,7 @@ function ScoreBreakdown({ scores, players, winnerId }) {
   );
 }
 
-export const turnLabel = (turn) => turn ? `Turn ${turn}` : "Setup";
-
-function ScoreTimeline({ players, summary, target }) {
+function ScoreTimeline({ players, summary, target, onSeek }) {
   const [selected, setSelected] = useState(null);
   const [hover, setHover] = useState(null);
   const labelId = useId();
@@ -129,55 +124,91 @@ function ScoreTimeline({ players, summary, target }) {
             <li key={player.id}><PlayerMark player={player} /> {player.name} <strong>{current.totals[i]}</strong></li>
           ))}
         </ul>
+        {onSeek && <button type="button" className="results-command score-replay" onClick={() => onSeek(current.step)}>
+          <Film size={15} aria-hidden="true" /> Replay this point
+        </button>}
       </div>
     </section>
   );
 }
 
-function KeyMoments({ moments, players }) {
+function KeyMoments({ moments, players, onSeek, activeStep, embedded = false }) {
+  const id = useId();
+  const byStep = new Map();
+  for (const moment of moments) {
+    if (!byStep.has(moment.step)) byStep.set(moment.step, []);
+    byStep.get(moment.step).push(moment);
+  }
   return (
-    <section className="results-panel key-moments" aria-labelledby="moments-title">
-      <h2 id="moments-title">Key moments</h2>
+    <section className={`key-moments${embedded ? "" : " results-panel"}`} aria-labelledby={embedded ? undefined : id} aria-label={embedded ? "Key moments" : undefined}>
+      {!embedded && <h2 id={id}>Key moments</h2>}
       <ol>
-        {moments.map(({ step, turn, text, kind, playerId }) => {
+        {[...byStep.values()].map(group => {
+          const mainMoments = group.filter(m => m.kind !== "lead");
+          const [first, ...rest] = mainMoments.length ? mainMoments : group;
+          const { step, turn, text, kind, playerId } = first;
           const Icon = momentIcons[kind] ?? Flag;
           const player = players.find(p => p.id === playerId);
-          return (
-            <li key={`${step}-${kind}`} data-kind={kind}>
-              <div className="result-moment" style={{ "--player": player?.color }}>
-                <span className="moment-icon"><Icon size={17} aria-hidden="true" /></span>
-                <span><small>{turnLabel(turn)}</small><strong>{text}</strong></span>
-              </div>
-            </li>
-          );
+          const content = <>
+            <span className="moment-icon"><Icon size={17} aria-hidden="true" /></span>
+            <span><small>{turnLabel(turn)}</small><strong>{text}</strong>{rest.map(m => <strong key={m.kind}>{m.text}</strong>)}</span>
+          </>;
+          return <li key={step} data-kind={group.some(m => m.kind === "win") ? "win" : kind}>
+            {onSeek ? (
+              <button type="button" className="result-moment" style={{ "--player": player?.color }}
+                aria-current={activeStep === step ? "step" : undefined} onClick={() => onSeek(step)}>
+                {content}<ChevronRight size={16} aria-hidden="true" />
+              </button>
+            ) : <div className="result-moment" style={{ "--player": player?.color }}>{content}</div>}
+          </li>;
         })}
       </ol>
     </section>
   );
 }
 
-export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite, soundControl, fullscreenControl }) {
-  const { game, summary } = lobby;
+export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite, soundControl, fullscreenControl, Board, resourceMeta }) {
+  const [stayOnResults, setStayOnResults] = useState(false);
+  const page = useRef(null);
+  const { game, summary, replay } = lobby;
   const winner = game.players.find(p => p.id === game.winnerId);
   const host = lobby.hostId === meId;
+  const inReplay = !!replay && !stayOnResults;
+  const canReplay = summary?.frameCount > 1;
+  const seek = (step) => command("seekReplay", { matchId: lobby.matchId, step });
+  const openReplay = async step => {
+    if ((step === undefined && replay) || await seek(step ?? 0)) setStayOnResults(false);
+  };
+  useEffect(() => {
+    if (!page.current) return;
+    page.current.scrollTop = 0;
+    page.current.querySelector("h1")?.focus({ preventScroll: true });
+  }, [inReplay]);
   return (
-    <main className="match-results" aria-labelledby="result-title">
+    <main className={`match-results${inReplay ? " match-replay" : ""}`} ref={page} aria-labelledby={inReplay ? "replay-title" : "result-title"}>
       <header className="results-toolbar">
         <div className="results-lobby">
           <span title={lobby.name}>{lobby.name}</span>
           {onCopyInvite && <button type="button" className="results-command icon" onClick={onCopyInvite} aria-label="Copy invite link" title="Copy invite link"><Copy size={15} aria-hidden="true" /></button>}
         </div>
         <div className="results-toolbar-actions">
+          {inReplay ? <button type="button" className="results-command" onClick={() => setStayOnResults(true)}><ChartNoAxesCombined size={16} aria-hidden="true" /> Results</button>
+            : canReplay && <button type="button" className="results-command" data-tone="gold" disabled={busy === "seekReplay"} onClick={() => openReplay()}>
+              <Film size={17} aria-hidden="true" /> {replay ? "Join replay" : "Replay"}
+            </button>}
           {fullscreenControl}{soundControl}
           {host && <button type="button" className="results-command" disabled={busy === "returnToLobby"} onClick={() => command("returnToLobby")}><RotateCcw size={16} aria-hidden="true" /> Return to lobby</button>}
           {onLeave && <button type="button" className="results-command icon" disabled={busy === "leaveLobby"} onClick={onLeave} aria-label="Leave lobby" title="Leave lobby"><LogOut size={16} aria-hidden="true" /></button>}
         </div>
       </header>
-      <div className="results-content">
+      {inReplay ? (
+        <ReplayView lobby={lobby} command={command} busy={busy} Board={Board} resourceMeta={resourceMeta} onSeek={seek}
+          moments={<KeyMoments moments={summary.moments} players={game.players} onSeek={seek} activeStep={replay.step} embedded />} />
+      ) : <div className="results-content">
         <header className="victory-banner">
           <div className="victory-crest" aria-hidden="true"><Trophy size={42} strokeWidth={1.5} /></div>
           <div className="victory-name">
-            <h1 id="result-title">{winner ? `${winner.name} wins` : "Match complete"}</h1>
+            <h1 id="result-title" tabIndex={-1}>{winner ? `${winner.name} wins` : "Match complete"}</h1>
             {winner && <p><PlayerMark player={winner} /><strong>{winner.score}</strong> victory points</p>}
           </div>
           <dl className="victory-metrics">
@@ -186,16 +217,16 @@ export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite
             <div><dt>Players</dt><dd>{game.players.length}</dd></div>
           </dl>
         </header>
-        {summary?.scores?.length > 0 && <ScoreBreakdown scores={summary.scores} players={game.players} winnerId={game.winnerId} />}
         {summary?.history === "partial" && <p className="results-note">Recording began during {turnLabel(summary.timeline[0].turn).toLowerCase()}. Earlier moves weren’t recorded.</p>}
         {summary?.history === "unavailable" && <p className="results-note">Move history wasn’t recorded for this match.</p>}
-        {summary?.timeline?.length > 0 && (
-          <div className="results-analysis">
-            <ScoreTimeline players={game.players} summary={summary} target={game.settings.victoryPoints} />
-            <KeyMoments moments={summary.moments} players={game.players} />
-          </div>
-        )}
-      </div>
+        <div className={`results-dashboard${summary?.timeline?.length ? " has-history" : ""}`}>
+          {summary?.scores?.length > 0 && <ScoreBreakdown scores={summary.scores} players={game.players} winnerId={game.winnerId} />}
+          {summary?.timeline?.length > 0 && <>
+              <ScoreTimeline players={game.players} summary={summary} target={game.settings.victoryPoints} onSeek={canReplay ? openReplay : undefined} />
+              <KeyMoments moments={summary.moments} players={game.players} onSeek={canReplay ? openReplay : undefined} />
+          </>}
+        </div>
+      </div>}
     </main>
   );
 }

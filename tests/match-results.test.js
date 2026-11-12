@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import crypto, { randomUUID } from 'node:crypto';
+import { syncBuiltinESMExports } from 'node:module';
+import { mkdtemp, rm, rmdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { io } from 'socket.io-client';
 import { createAppServer } from '../server/index.js';
 import { action, createGame, tick, viewGame } from '../server/game.js';
 import { appendFrame, beginRecording, captureMove, lastLogSequence, matchSummary } from '../server/match-recording.js';
+import { replayBoard } from '../shared/match-replay.js';
 
 const players = [{ id: 'ada', name: 'Ada', color: '#ce6849' }, { id: 'birch', name: 'Birch', color: '#3b8292' }];
 const rpc = (client, event, payload = {}) => client.timeout(3000).emitWithAck(event, payload);
 async function connect(server, token = randomUUID()) {
-  const client = io(`http://127.0.0.1:${server.port}`, { auth: { token }, transports: ['websocket'], forceNew: true });
+  const client = io(`http://127.0.0.1:${server.port}`, { auth: { token }, transports: ['websocket'], forceNew: true, reconnection: false });
   client.on('lobby', snapshot => { client.lobby = snapshot; });
   const { playerId } = await new Promise((resolve, reject) => { client.once('session', resolve); client.once('connect_error', reject); });
   Object.assign(client, { playerId, token });
@@ -78,17 +83,45 @@ test('match summary credits actual points and preserves when they changed', () =
   assert.equal(matchSummary(structuredClone(game)).history, 'unavailable');
 });
 
-test('match history starts before setup, stays private until a win, and clears for the next game', async t => {
-  const server = await createAppServer({ port: 0, testMode: true, persistence: false });
+test('a timeout records the roll before the same tick advances the turn', t => {
+  const game = createGame(players, { seed: 'replay-dice' });
+  Object.assign(game, { phase: 'roll', turn: 1 });
+  const recording = beginRecording(game, true);
+  const dice = t.mock.method(crypto, 'randomInt', () => 3);
+  syncBuiltinESMExports();
+  try {
+    tick(game, game.deadline, [], (id, type, seq) => appendFrame(recording, captureMove(game, id, type, seq, true)));
+  } finally {
+    dice.mock.restore();
+    syncBuiltinESMExports();
+  }
+  assert.deepEqual(recording.frames.slice(1).map(({ turn, dice, move }) => [turn, dice, move.type]), [
+    [1, [3, 3], 'rollDice'], [2, null, 'endTurn'],
+  ]);
+  assert.equal(recording.positions.length, 1, 'the two actions reuse the board position');
+});
+
+test('guests share the replay cursor, reconstruct board state, and resume it after restart', async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'lecatani-replay-'));
+  const options = { port: 0, testMode: true, dataFile: path.join(dir, 'lobbies.json') };
+  let server = await createAppServer(options);
   const clients = [];
-  t.after(async () => { clients.forEach(client => client.disconnect()); await server.close(); });
-  const host = await connect(server), guest = await connect(server);
-  clients.push(host, guest);
-  const { id } = await rpc(host, 'createLobby', { playerName: 'Ada', settings: { turnSeconds: 0, victoryPoints: 3, seed: 'recording' } });
+  t.after(async () => {
+    clients.forEach(client => client.disconnect());
+    await server.close();
+    await rm(options.dataFile, { force: true });
+    await rmdir(dir);
+  });
+  const host = await connect(server), guest = await connect(server), outsider = await connect(server);
+  clients.push(host, guest, outsider);
+  const { id } = await rpc(host, 'createLobby', { playerName: 'Ada', settings: { turnSeconds: 0, victoryPoints: 3, extendedBoard: true, seed: 'recording' } });
   assert.ok((await rpc(guest, 'joinLobby', { id, playerName: 'Birch' })).ok);
   await rpc(guest, 'setReady', { ready: true });
   assert.ok((await rpc(host, 'startGame')).ok);
   const lobby = server.lobbies.get(id);
+  const seek = (client, step, matchId = lobby.matchId) => rpc(client, 'seekReplay', { matchId, step });
+  assert.equal((await seek(guest, 0)).ok, false, 'live games cannot be replayed');
+  assert.equal(host.lobby.replay, null);
   assert.equal(lobby.recording.frames.length, 1);
   const currentClient = () => clients.find(client => client.playerId === lobby.game.activePlayerId);
   assert.equal((await rpc(currentClient(), 'gameAction', { type: 'placeSettlement', vertexId: 'invalid' })).ok, false);
@@ -114,7 +147,50 @@ test('match history starts before setup, stays private until a win, and clears f
   assert.equal(guest.lobby.summary.history, 'complete');
   assert.equal(guest.lobby.summary.frameCount, 10);
   assert.equal(guest.lobby.summary.scores.find(s => s.id === winner.playerId).total, 3);
-  assert.ok((await rpc(host, 'returnToLobby')).ok);
-  assert.equal(host.lobby.summary, null);
-  assert.equal(lobby.recording, undefined);
+  const lastStep = guest.lobby.summary.frameCount - 1;
+  assert.equal((await seek(guest, 0, 'previous-match')).ok, false);
+  assert.equal((await seek(outsider, 0)).ok, false);
+  assert.equal((await seek(guest, lastStep + 1)).ok, false);
+  assert.equal((await seek(guest, 1.5)).ok, false);
+  assert.ok((await seek(guest, 0)).ok, 'a non-host opens replay for the room');
+  await rpc(host, 'getDirectory');
+  assert.deepEqual(host.lobby.replay, guest.lobby.replay);
+  assert.deepEqual(host.lobby.replay.position, { buildings: [], roads: [] });
+  assert.deepEqual(host.lobby.replay.frame.points.map(p => p.total), [0, 0]);
+  assert.equal(host.lobby.replay.frame.robber, host.lobby.game.robberHexId);
+  const seekBoth = async (client, step) => {
+    assert.ok((await seek(client, step)).ok);
+    await rpc(client === host ? guest : host, 'getDirectory');
+    assert.deepEqual(host.lobby.replay, guest.lobby.replay);
+    assert.equal(host.lobby.replay.step, step);
+    assert.equal(host.lobby.replay.playerId, client.playerId);
+  };
+  await seekBoth(host, 2);
+  const earlyBoard = replayBoard(host.lobby.game.board, host.lobby.replay.position);
+  assert.equal(earlyBoard.hexes.length, 30);
+  assert.equal(earlyBoard.vertices.filter(v => v.building?.type === 'settlement').length, 1);
+  assert.equal(earlyBoard.edges.filter(e => e.owner).length, 1);
+  assert.deepEqual(earlyBoard.hexes, host.lobby.game.board.hexes);
+  await seekBoth(guest, lastStep);
+  assert.deepEqual(replayBoard(host.lobby.game.board, host.lobby.replay.position), host.lobby.game.board);
+  await seekBoth(host, 1);
+  assert.ok((await rpc(guest, 'chat', { text: 'Let’s look at the opening move.' })).ok);
+  await rpc(host, 'getDirectory');
+  assert.equal(host.lobby.messages.at(-1).text, 'Let’s look at the opening move.');
+  assert.equal(host.lobby.replay.step, 1);
+
+  const savedCursor = host.lobby.replay;
+  clients.forEach(client => client.disconnect());
+  await server.close();
+  server = await createAppServer(options);
+  const returningHost = await connect(server, host.token), returningGuest = await connect(server, guest.token);
+  clients.push(returningHost, returningGuest);
+  await rpc(returningHost, 'getDirectory');
+  await rpc(returningGuest, 'getDirectory');
+  assert.deepEqual(returningGuest.lobby.replay, savedCursor);
+  assert.equal(returningHost.lobby.summary.frameCount, lastStep + 1);
+  assert.ok((await rpc(returningHost, 'returnToLobby')).ok);
+  assert.equal(returningHost.lobby.summary, null);
+  assert.equal(returningHost.lobby.replay, null);
+  assert.equal(server.lobbies.get(id).recording, undefined);
 });
