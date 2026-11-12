@@ -1,0 +1,7 @@
+.build-preview-target { cursor: pointer; pointer-events: none; }
+.build-preview { display: none; opacity: .75; }
+@media (any-hover: hover) {
+  .build-preview-target { pointer-events: auto; }
+  .game-board:not(.dragging) .build-preview-target:hover > .build-preview { display: inline; }
+  .game-board:not(.dragging) .build-preview-target:hover > .build-preview-original { display: none; }
+}

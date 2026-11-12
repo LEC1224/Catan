@@ -52,6 +52,7 @@ import {
   Bot,
 } from "lucide-react";
 import "./styles.css";
+import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
 
@@ -1074,7 +1075,7 @@ function Building({ type, color, x = 0, y = 0, ghost = false }) {
     </g>
   );
 }
-function Board({ game, meId, mode, onAction }) {
+function Board({ game, meId, mode, previewCities, onAction }) {
   const b = game.board,
     vertices = useMemo(
       () => Object.fromEntries(b.vertices.map((v) => [v.id, v])),
@@ -1099,7 +1100,7 @@ function Board({ game, meId, mode, onAction }) {
     roads = new Set(
       active && (roadPhase || mode === "road") ? legal.roads : [],
     ),
-    cities = new Set(active && mode === "city" ? legal.cities : []);
+    cities = new Set(active && (mode === "city" || previewCities) ? legal.cities : []);
   const robber = robberPlacement(game, meId);
   const portGroups = [];
   const used = new Set();
@@ -1403,24 +1404,28 @@ function Board({ game, meId, mode, onAction }) {
             </g>
           );
         })}
-      {b.vertices
-        .filter((v) => v.building)
-        .map((v) => (
+      {b.vertices.filter((v) => v.building).map((v) => {
+        const selectable = cities.has(v.id);
+        const choose = () => onAction("upgradeCity", { vertexId: v.id });
+        const renderPiece = (type) => (
+          <Building type={type} color={colors[v.building.owner]} x={v.x} y={v.y} />
+        );
+        if (selectable && previewCities) {
+          return <CityUpgradePreview key={v.id} x={v.x} y={v.y} onBuild={choose} renderPiece={renderPiece} />;
+        }
+        return (
           <g
             key={v.id}
-            role={cities.has(v.id) ? "button" : undefined}
-            tabIndex={cities.has(v.id) ? 0 : undefined}
-            className={cities.has(v.id) ? "city-target" : ""}
-            aria-label={`Upgrade settlement ${v.id}`}
-            onClick={() =>
-              cities.has(v.id) && onAction("upgradeCity", { vertexId: v.id })
-            }
+            role={selectable ? "button" : undefined}
+            tabIndex={selectable ? 0 : undefined}
+            className={selectable ? "city-target" : ""}
+            aria-label={selectable ? `Upgrade settlement ${v.id}` : undefined}
+            onClick={selectable ? choose : undefined}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && cities.has(v.id))
-                onAction("upgradeCity", { vertexId: v.id });
+              if (e.key === "Enter" && selectable) choose();
             }}
           >
-            {cities.has(v.id) && (
+            {selectable && (
               <circle
                 cx={v.x}
                 cy={v.y}
@@ -1431,14 +1436,10 @@ function Board({ game, meId, mode, onAction }) {
                 strokeDasharray="4 3"
               />
             )}
-            <Building
-              type={v.building.type}
-              color={colors[v.building.owner]}
-              x={v.x}
-              y={v.y}
-            />
+            {renderPiece(v.building.type)}
           </g>
-        ))}
+        );
+      })}
       {b.vertices
         .filter((v) => settlements.has(v.id))
         .map((v) => (
@@ -2048,7 +2049,13 @@ function Game({ lobby, meId, command, busy, onHelp }) {
             )}
           </div>
           <div className="board-frame">
-            <Board game={game} meId={meId} mode={mode} onAction={action} />
+            <Board
+              game={game}
+              meId={meId}
+              mode={mode}
+              previewCities={!mode && !busy && canAct && afford("city")}
+              onAction={action}
+            />
             <div className="board-caption">
               <span>
                 {game.settings.seed ? `Seed: ${game.settings.seed}` : ""}
