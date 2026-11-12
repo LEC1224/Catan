@@ -13,7 +13,11 @@ const player = (g, id) => g.players.find(p => p.id === id);
 const vertex = (g, id) => g.board.vertices.find(v => v.id === id);
 const edge = (g, id) => g.board.edges.find(e => e.id === id);
 const hex = (g, id) => g.board.hexes.find(h => h.id === id);
-const addLog = (g, text) => { g.log.push({ text, at: Date.now() }); if (g.log.length > 120) g.log.shift(); };
+function addLog(g, text) {
+  const seq = (g.log.at(-1)?.seq ?? 0) + 1;
+  g.log.push({ text, at: Date.now(), seq });
+  if (g.log.length > 120) g.log.shift();
+}
 const setDeadline = g => { g.deadline = g.settings.turnSeconds ? Date.now() + g.settings.turnSeconds * 1000 : null; };
 function phase(g, value) { g.phase = value; setDeadline(g); }
 function shuffle(items, random = n => randomInt(n)) { for (let i = items.length - 1; i > 0; i--) { const j = random(i + 1); [items[i], items[j]] = [items[j], items[i]]; } return items; }
@@ -447,31 +451,36 @@ export function viewGame(g, playerId) {
   return visible;
 }
 
-export function tick(game, now = Date.now(), excludedPlayers = []) {
+export function tick(game, now = Date.now(), excludedPlayers = [], onMove) {
   if (!game.deadline || now < game.deadline || game.phase === 'finished') return false;
   // Browser-controlled bots never receive server-selected timeout moves.
   if (game.phase === 'discard' ? !Object.keys(game.discardRequired).some(id => !excludedPlayers.includes(id)) : excludedPlayers.includes(game.activePlayerId)) return false;
+  const perform = (playerId, type, payload) => {
+    const previousLog = game.log.at(-1)?.seq ?? 0;
+    action(game, playerId, type, payload);
+    onMove?.(playerId, type, previousLog);
+  };
   const id = game.activePlayerId;
   addLog(game, 'Thinking time expired; an automatic move keeps the game going.');
   if (game.phase === 'setupSettlement') {
     const targets = legal(game, id).settlements;
     const ranked = targets.map(vId => ({ id: vId, value: vertex(game, vId).hexIds.reduce((total, hId) => { const h = hex(game, hId); return total + (h.number ? 6 - Math.abs(7 - h.number) : 0); }, 0) })).sort((a, b) => b.value - a.value);
-    if (ranked.length) action(game, id, 'placeSettlement', { vertexId: ranked[0].id });
-  } else if (game.phase === 'setupRoad') action(game, id, 'placeRoad', { edgeId: legal(game, id).roads[0] });
-  else if (game.phase === 'roll') { action(game, id, 'rollDice'); if (game.phase === 'action') action(game, id, 'endTurn'); }
+    if (ranked.length) perform(id, 'placeSettlement', { vertexId: ranked[0].id });
+  } else if (game.phase === 'setupRoad') perform(id, 'placeRoad', { edgeId: legal(game, id).roads[0] });
+  else if (game.phase === 'roll') { perform(id, 'rollDice'); if (game.phase === 'action') perform(id, 'endTurn'); }
   else if (game.phase === 'discard') {
     for (const [discardId, count] of Object.entries(game.discardRequired)) {
       if (excludedPlayers.includes(discardId)) continue;
       const map = emptyResources(), holdings = { ...player(game, discardId).resources };
       for (let n = 0; n < count; n++) { const r = [...RESOURCES].sort((a, b) => holdings[b] - holdings[a])[0]; map[r]++; holdings[r]--; }
-      action(game, discardId, 'discard', { resources: map });
+      perform(discardId, 'discard', { resources: map });
     }
-  } else if (game.phase === 'robber') action(game, id, 'moveRobber', { hexId: legal(game, id).robberHexes[0] });
-  else if (game.phase === 'steal') action(game, id, 'steal', { targetId: game.stealTargets[0] });
+  } else if (game.phase === 'robber') perform(id, 'moveRobber', { hexId: legal(game, id).robberHexes[0] });
+  else if (game.phase === 'steal') perform(id, 'steal', { targetId: game.stealTargets[0] });
   else if (game.phase === 'action') {
-    while (game.roadBuildingRemaining && game.phase === 'action') action(game, id, 'placeRoad', { edgeId: legal(game, id).roads[0] });
-    if (game.phase === 'action') action(game, id, 'endTurn');
-    else if (game.phase === 'roll') { action(game, id, 'rollDice'); if (game.phase === 'action') action(game, id, 'endTurn'); }
+    while (game.roadBuildingRemaining && game.phase === 'action') perform(id, 'placeRoad', { edgeId: legal(game, id).roads[0] });
+    if (game.phase === 'action') perform(id, 'endTurn');
+    else if (game.phase === 'roll') { perform(id, 'rollDice'); if (game.phase === 'action') perform(id, 'endTurn'); }
   }
   return true;
 }

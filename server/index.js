@@ -6,6 +6,7 @@ import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGame, action, viewGame, tick } from './game.js';
+import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary } from './match-recording.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
@@ -51,6 +52,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       for (const lobby of data.lobbies || []) {
         if (Date.now() - lobby.updatedAt > 7 * 86400000) continue;
         for (const player of lobby.players) { player.connected = false; player.disconnectedAt = Date.now(); if (!player.isBot) memberships.set(player.id, lobby.id); }
+        if (lobby.status === 'playing' && lobby.game && !hasRecording(lobby.recording)) lobby.recording = beginRecording(lobby.game, true);
         lobbies.set(lobby.id, lobby);
       }
     } catch (error) { if (error.code !== 'ENOENT') console.warn('Could not restore saved lobbies:', error.message); }
@@ -78,8 +80,10 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       botControllers.set(lobby.id, controller);
     }
     const bots = lobby.players.filter(p => p.isBot);
+    const { recording, ...visibleLobby } = lobby;
+    const summary = lobby.status === 'finished' ? matchSummary(lobby.game, recording) : null;
     for (const player of lobby.players) for (const socketId of sessions.get(player.id) || []) {
-      io.to(socketId).emit('lobby', { ...lobby, botsPaused: bots.length > 0 && !controllerId, meId: player.id, game: lobby.game ? viewGame(lobby.game, player.id) : null });
+      io.to(socketId).emit('lobby', { ...visibleLobby, summary, botsPaused: bots.length > 0 && !controllerId, meId: player.id, game: lobby.game ? viewGame(lobby.game, player.id) : null });
       io.to(socketId).emit('botState', socketId === controllerId && bots.length && lobby.status === 'playing' ? {
         lobbyId: lobby.id, matchId: lobby.matchId, lease: controller.lease, revision: lobby.botRevision || 0,
         bots: bots.map(bot => ({ id: bot.id, difficulty: bot.difficulty, game: viewGame(lobby.game, bot.id) })),
@@ -88,7 +92,9 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
   }
   function commitAction(lobby, playerId, payload) {
     const candidate = structuredClone(lobby.game);
+    const previousLog = lastLogSequence(candidate);
     action(candidate, playerId, payload.type, payload);
+    appendFrame(lobby.recording, captureMove(candidate, playerId, payload.type, previousLog));
     lobby.game = candidate; lobby.botRevision = (lobby.botRevision || 0) + 1;
     if (candidate.phase === 'finished') lobby.status = 'finished';
     emitLobby(lobby); if (lobby.status === 'finished') broadcastDirectory();
@@ -187,7 +193,8 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       if (lobby.players.some(p => !p.isBot && (!p.connected || (p.id !== playerId && !p.ready)))) throw Error('Every player must be connected and ready.');
       const first = randomInt(lobby.players.length);
       const seating = [...lobby.players.slice(first), ...lobby.players.slice(0, first)];
-      lobby.game = createGame(seating, lobby.settings); lobby.matchId = randomBytes(12).toString('hex'); lobby.botRevision = 0; lobby.status = 'playing'; emitLobby(lobby); broadcastDirectory();
+      lobby.game = createGame(seating, lobby.settings); lobby.recording = beginRecording(lobby.game);
+      lobby.matchId = randomBytes(12).toString('hex'); lobby.botRevision = 0; lobby.status = 'playing'; emitLobby(lobby); broadcastDirectory();
     });
     on('gameAction', payload => {
       const lobby = getLobby(playerId); if (lobby.status !== 'playing') throw Error('There is no active match.');
@@ -213,11 +220,11 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     });
     on('kickPlayer', payload => { const lobby = getLobby(playerId); requireHost(lobby, playerId); waiting(lobby); if (payload.playerId === playerId) throw Error('Use Leave lobby instead.'); if (!lobby.players.some(p => p.id === payload.playerId)) throw Error('Player not found.'); releasePlayer(lobby, payload.playerId, true); });
     on('transferHost', payload => { const lobby = getLobby(playerId); requireHost(lobby, playerId); const next = lobby.players.find(p => p.id === payload.playerId && !p.isBot && p.connected); if (!next) throw Error('Choose a connected human player.'); lobby.hostId = next.id; next.ready = true; emitLobby(lobby); broadcastDirectory(); });
-    on('returnToLobby', () => { const lobby = getLobby(playerId); requireHost(lobby, playerId); if (lobby.status !== 'finished') throw Error('Finish the current match first.'); lobby.game = null; lobby.status = 'waiting'; resetReady(lobby); emitLobby(lobby); broadcastDirectory(); });
+    on('returnToLobby', () => { const lobby = getLobby(playerId); requireHost(lobby, playerId); if (lobby.status !== 'finished') throw Error('Finish the current match first.'); lobby.game = null; delete lobby.recording; lobby.status = 'waiting'; resetReady(lobby); emitLobby(lobby); broadcastDirectory(); });
     on('abandonGame', () => {
       const lobby = getLobby(playerId); requireHost(lobby, playerId);
       if (lobby.status !== 'playing') throw Error('There is no active match to end.');
-      lobby.game = null; lobby.status = 'waiting'; resetReady(lobby);
+      lobby.game = null; delete lobby.recording; lobby.status = 'waiting'; resetReady(lobby);
       lobby.messages.push({ id: randomBytes(6).toString('hex'), name: 'System', text: 'The host ended the match. You can configure a new game in the lobby.', at: Date.now() });
       lobby.messages = lobby.messages.slice(-80); emitLobby(lobby); broadcastDirectory();
     });
@@ -237,7 +244,18 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
   const timer = setInterval(() => {
     for (const lobby of lobbies.values()) {
       if (lobby.game && lobby.status === 'playing' && lobby.players.some(p => p.connected)) {
-        try { const candidate = structuredClone(lobby.game); if (tick(candidate, Date.now(), lobby.players.filter(p => p.isBot).map(p => p.id))) { lobby.game = candidate; lobby.botRevision = (lobby.botRevision || 0) + 1; if (candidate.phase === 'finished') { lobby.status = 'finished'; broadcastDirectory(); } emitLobby(lobby); } }
+        try {
+          const candidate = structuredClone(lobby.game), frames = [];
+          const excluded = lobby.players.filter(p => p.isBot).map(p => p.id);
+          if (tick(candidate, Date.now(), excluded, (playerId, type, previousLog) => {
+            frames.push(captureMove(candidate, playerId, type, previousLog, true));
+          })) {
+            for (const frame of frames) appendFrame(lobby.recording, frame);
+            lobby.game = candidate; lobby.botRevision = (lobby.botRevision || 0) + 1;
+            if (candidate.phase === 'finished') { lobby.status = 'finished'; broadcastDirectory(); }
+            emitLobby(lobby);
+          }
+        }
         catch (error) { console.error('Timer resolution failed:', error.message); }
       }
       const currentHost = lobby.players.find(p => p.id === lobby.hostId);

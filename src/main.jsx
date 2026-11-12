@@ -56,6 +56,7 @@ import {
 import { Sheep } from "./sheep-icon.js";
 import "./styles.css";
 import { CardDealLayer, PlayerHandBacks } from "./card-deals.jsx";
+import { MatchResults } from "./match-results.jsx";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
@@ -383,6 +384,8 @@ function App() {
             command={command}
             busy={busy}
             onHelp={() => setHelp(true)}
+            onCopyInvite={copyInvite}
+            onLeave={leave}
           />
         ) : (
           <WaitingRoom
@@ -1714,7 +1717,7 @@ function DiscardModal({ count, me, onAction }) {
   );
 }
 
-function Game({ lobby, meId, command, busy, onHelp }) {
+function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
   const game = lobby.game,
     me = game.players.find((p) => p.id === meId),
     active = game.players.find((p) => p.id === game.activePlayerId),
@@ -1743,6 +1746,8 @@ function Game({ lobby, meId, command, busy, onHelp }) {
         <h2>Loading game…</h2>
       </main>
     );
+  if (game.phase === "finished")
+    return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave }} />;
   const action = async (type, payload = {}) => {
     const result = await command("gameAction", { type, ...payload });
     if (
@@ -2263,37 +2268,6 @@ function Game({ lobby, meId, command, busy, onHelp }) {
               );
             })}
           </div>
-        </Modal>
-      )}
-      {game.phase === "finished" && (
-        <Modal
-          title={`${game.players.find((p) => p.id === game.winnerId)?.name} wins`}
-          eyebrow="GAME OVER"
-        >
-          <div className="winner-trophy">
-            <Trophy size={70} strokeWidth={1} />
-          </div>
-          <div className="final-scores">
-            {[...game.players]
-              .sort((a, b) => b.score - a.score)
-              .map((p) => (
-                <div key={p.id}>
-                  <span style={{ background: p.color }} />
-                  <strong>{p.name}</strong>
-                  <b>{p.score} VP</b>
-                </div>
-              ))}
-          </div>
-          {host ? (
-            <Button className="full" onClick={() => command("returnToLobby")}>
-              <RefreshCw size={17} />
-              Return to lobby
-            </Button>
-          ) : (
-            <p className="muted-note">
-              Your host can return everyone to the lobby for another game.
-            </p>
-          )}
         </Modal>
       )}
     </main>
