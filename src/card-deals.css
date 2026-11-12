@@ -47,6 +47,27 @@
 .deal-mini-fan[data-empty="true"] .deal-card-back::before,
 .deal-mini-fan[data-empty="true"] .deal-card-back::after { display: none; }
 
+[data-deal-hand="resource"][data-discard-risk="true"] {
+  background-image: radial-gradient(ellipse 60% 105% at 50% 78%, #cd4d454a, #bd453c2e 50%, transparent 93%);
+}
+.deal-hand-backs[data-discard-risk="true"] { position: relative; isolation: isolate; }
+.deal-hand-backs[data-discard-risk="true"]::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 -3px;
+  border: 1px solid #d5695b65;
+  border-radius: 5px;
+  background: linear-gradient(110deg, #cb544840, #cb54481c);
+  pointer-events: none;
+}
+.deal-hand-backs[data-discard-risk="true"] .deal-card-back {
+  --deal-rim: #ffc39f;
+  --deal-line: #f5a583cc;
+  --deal-base: #943e31;
+}
+.deal-risk-label { color: #943e31; }
+
 [data-deal-pending] { visibility: hidden; }
 .fan-face[data-deal-animated] { animation: none; }
 .fan-slot:has([data-deal-pending]) { transition: none; }

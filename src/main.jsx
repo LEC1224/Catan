@@ -1788,6 +1788,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   : mode
                     ? `Choose a highlighted ${mode === "road" ? "edge" : "location"} for your ${mode}.`
                     : "Trade or build, then end your turn.";
+  const overDiscardLimit = me.resourceCount > game.settings.discardThreshold;
   const offered = game.tradeOffers?.[0] ?? game.tradeOffer,
     offerOwner = game.players.find((p) => p.id === offered?.from),
     canAccept =
@@ -1869,7 +1870,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   </span>
                 </div>
                 <div className="player-stats">
-                  <PlayerHandBacks playerId={p.id} kind="resource" count={p.resourceCount} />
+                  <PlayerHandBacks playerId={p.id} kind="resource" count={p.resourceCount} discardThreshold={game.settings.discardThreshold} />
                   <PlayerHandBacks playerId={p.id} kind="development" count={p.developmentCount} />
                   <span title="Played knights">
                     <Shield size={14} />
@@ -2100,9 +2101,10 @@ function Game({ lobby, meId, command, busy, onHelp }) {
               <span>
                 {me.resourceCount} resource{me.resourceCount === 1 ? "" : "s"}
                 <LockKeyhole size={11} />
+                  {overDiscardLimit && <span className="deal-risk-label">Over discard limit</span>}
               </span>
             </div>
-            <div className="hand-cards" data-deal-hand="resource">
+            <div className="hand-cards" data-deal-hand="resource" data-discard-risk={overDiscardLimit || undefined}>
               {RES.map((r) => (
                 <div
                   key={r}

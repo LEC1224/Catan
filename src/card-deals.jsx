@@ -15,11 +15,12 @@ function CardBack({ kind }) {
   return <span className="deal-card-back" data-kind={kind} aria-hidden="true" />;
 }
 
-export function PlayerHandBacks({ playerId, kind, count }) {
-  const label = `${count} ${kind} ${count === 1 ? "card" : "cards"}`;
+export function PlayerHandBacks({ playerId, kind, count, discardThreshold }) {
+  const atRisk = kind === "resource" && discardThreshold != null && count > discardThreshold;
+  const label = `${count} ${kind} ${count === 1 ? "card" : "cards"}${atRisk ? `, above the discard limit of ${discardThreshold}` : ""}`;
   const shown = clamp(count, 1, maxCardsPerMove);
   return (
-    <span className="deal-hand-backs" role="img" aria-label={label} title={label}>
+    <span className="deal-hand-backs" data-discard-risk={atRisk || undefined} role="img" aria-label={label} title={label}>
       <span className="deal-mini-fan" data-deal-player={playerId} data-deal-kind={kind} data-empty={count === 0} aria-hidden="true">
         {Array.from({ length: shown }, (_, index) => {
           const offset = index - (shown - 1) / 2;
