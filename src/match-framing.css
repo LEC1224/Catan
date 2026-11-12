@@ -69,9 +69,3 @@
 }
 
 .match-shell { position: relative; }
-.match-shell > .connection-banner {
-  position: absolute;
-  z-index: 11;
-  inset: 0 0 auto;
-  pointer-events: none;
-}

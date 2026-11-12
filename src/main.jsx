@@ -22,7 +22,6 @@ import {
   LockKeyhole,
   Map,
   MessageSquare,
-  Minus,
   Mountain,
   Plus,
   RefreshCw,
@@ -38,7 +37,6 @@ import {
   Waves,
   Wheat,
   X,
-  WifiOff,
   Volume2,
   Compass,
   Dices,
@@ -60,7 +58,8 @@ import "./match-framing.css";
 import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
 import { useRollReminder } from "./roll-reminder.js";
 import { MatchResults } from "./match-results.jsx";
-import { KeyboardShortcuts, MatchShortcuts, shortcutProps, useDialogKeyboard } from "./match-shortcuts.jsx";
+import { KeyboardShortcuts, MatchShortcuts, shortcutProps } from "./match-shortcuts.jsx";
+import { DevelopmentTray, RobberTray, TableDialog, TableFeedback, developmentRestriction } from "./match-prompts.jsx";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
@@ -95,9 +94,6 @@ const DEFAULTS = {
   pairedTurns: true,
   seed: "",
 };
-const EMPTY = () => Object.fromEntries(RES.map((r) => [r, 0]));
-const total = (resources) =>
-  Object.values(resources || {}).reduce((a, b) => a + b, 0);
 function getToken() {
   let token = localStorage.getItem("catanToken");
   if (!token) {
@@ -150,46 +146,6 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
     </label>
   );
 }
-function Modal({ title, eyebrow, children, onClose, wide = false }) {
-  const dialog = useRef(null);
-  useDialogKeyboard(dialog);
-  return (
-    <div
-      className="modal-shade"
-      role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose?.();
-      }}
-    >
-      <section
-        className={`modal ${wide ? "wide" : ""}`}
-        ref={dialog}
-        tabIndex={-1}
-        data-keyboard-dialog=""
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <header>
-          {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-          <h2>{title}</h2>
-          {onClose && (
-            <button
-              className="icon-button close"
-              type="button"
-              data-dialog-close=""
-              onClick={onClose}
-              aria-label="Close dialog"
-            >
-              <X size={20} />
-            </button>
-          )}
-        </header>
-        {children}
-      </section>
-    </div>
-  );
-}
 function Cost({ cost }) {
   return (
     <span className="cost">
@@ -226,11 +182,15 @@ function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [help, setHelp] = useState(false),
+    [abandon, setAbandon] = useState(false),
     [busy, setBusy] = useState("");
   const [name, setName] = useState(localStorage.getItem("catanName") || "");
   const { enabled: soundEnabled, toggle: toggleSound, player: sound } = useSoundEffects();
   useDecisionWarning(connected ? lobby?.game : null, lobby?.meId, sound);
   const cardDealStream = useRef(0);
+  const inMatch = !!lobby?.game;
+  const canAbandon = inMatch && lobby.status === "playing" && lobby.game.phase !== "finished" && lobby.hostId === (meId || lobby.meId);
+  useEffect(() => { if (!canAbandon) setAbandon(false); }, [canAbandon]);
   useEffect(() => {
     const s = io({ auth: { token: getToken() } });
     let stopBots;
@@ -248,10 +208,7 @@ function App() {
       sound.stop();
       setConnected(false);
     });
-    s.on("connect_error", (err) => {
-      setConnected(false);
-      setError(err.message || "Could not reach the game server. Reconnecting…");
-    });
+    s.on("connect_error", () => setConnected(false));
     s.on("session", (x) => setMeId(x.playerId));
     s.on("directory", setDirectory);
     s.on("lobby", (l) => {
@@ -295,10 +252,7 @@ function App() {
   }, [notice]);
   const command = (event, payload = {}) =>
     new Promise((resolve) => {
-      if (!socket?.connected) {
-        setError("Connection lost. Reconnecting…");
-        return resolve(false);
-      }
+      if (!socket?.connected) return resolve(false);
       if (event === "gameAction" && payload.type === "declineTrade" && !Array.isArray(lobby?.game?.tradeOffers)) {
         setError("Restart the game server and reload this page to decline trade offers.");
         return resolve(false);
@@ -339,6 +293,10 @@ function App() {
       setNotice(`Lobby code: ${lobby.id}`);
     }
   };
+  const showAbandon = abandon && canAbandon;
+  const feedback = <TableFeedback disconnected={inMatch && !connected}
+    botsPaused={connected && lobby?.status === "playing" && lobby.botsPaused} error={error} notice={notice}
+    onDismiss={() => { setError(""); setNotice(""); }} />;
   return (
     <>
       <header className={`site-header ${lobby?.game ? "in-game" : ""}`}>
@@ -372,7 +330,7 @@ function App() {
           )}
         </nav>
         <div className="header-end">
-          <span className={`connection ${connected ? "" : "offline"}`}>
+          <span className={`connection ${connected ? "" : "offline"}`} role="status">
             <span />
             {connected ? "Connected" : "Connecting"}
           </span>
@@ -393,17 +351,6 @@ function App() {
           <SoundToggle enabled={soundEnabled} onToggle={toggleSound} className="icon-button header-sound" />
         </div>
       </header>
-      {!connected && (
-        <div className="connection-banner">
-          <WifiOff size={16} /> Connecting to the game server. Reconnecting
-          automatically.
-        </div>
-      )}
-      {connected && lobby?.status === "playing" && lobby.botsPaused && (
-        <div className="connection-banner" role="status">
-          <Bot size={16} /> Bots paused while the host is disconnected. Control transfers to a connected player after one minute.
-        </div>
-      )}
       {lobby ? (
         lobby.game ? (
           <Game
@@ -412,6 +359,7 @@ function App() {
             command={command}
             busy={busy}
             onHelp={() => setHelp(true)}
+            onAbandon={canAbandon ? () => setAbandon(true) : undefined}
             onCopyInvite={copyInvite}
             onLeave={leave}
           />
@@ -434,23 +382,18 @@ function App() {
           connected={connected}
         />
       )}
-      {(error || notice) && (
-        <div className={`toast ${error ? "error" : ""}`} role="status">
-          {error ? <CircleHelp size={19} /> : <Check size={19} />}
-          <span>{error || notice}</span>
-          <button
-            className="icon-button"
-            aria-label="Dismiss notification"
-            onClick={() => {
-              setError("");
-              setNotice("");
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
+      {!help && !showAbandon && <div className="table-feedback-layer">{feedback}</div>}
+      {help && <Guide onClose={() => setHelp(false)} feedback={feedback} />}
+      {showAbandon && (
+        <TableDialog title="End match?" icon={LogOut} onClose={() => setAbandon(false)} feedback={feedback}
+          description="Everyone returns to the lobby and this match’s progress is lost.">
+          <div className="table-confirm-actions">
+            <button type="button" className="draft-command match-command" onClick={() => setAbandon(false)}>Keep playing</button>
+            <button type="button" className="draft-command match-command" data-tone="reject" disabled={!!busy}
+              onClick={async () => { if (await command("abandonGame")) setAbandon(false); }}>End match</button>
+          </div>
+        </TableDialog>
       )}
-      {help && <Guide onClose={() => setHelp(false)} />}
     </>
   );
 }
@@ -1166,6 +1109,7 @@ function Board({ game, meId, mode, previewCities, onAction }) {
   return (
     <svg
       className="game-board"
+      tabIndex={-1}
       viewBox={`${minX} ${minY} ${width} ${height}`}
       aria-label="Interactive Catan board"
     >
@@ -1517,30 +1461,30 @@ const DEV_META = {
     name: "Knight",
     icon: Shield,
     description:
-      "Move the robber and steal one resource. Your played knights count toward Largest Army.",
+      "Move the robber and steal a random resource if an adjacent opponent has cards. Counts toward Largest Army.",
   },
   victoryPoint: {
     name: "Victory point",
     icon: Trophy,
     description:
-      "A hidden point toward victory. It counts automatically, even when purchased this turn.",
+      "Adds one hidden victory point to your score as soon as you draw it.",
   },
   roadBuilding: {
     name: "Road building",
     icon: Route,
     description:
-      "Build two roads at no resource cost. Choose their edges on the board.",
+      "Place up to two roads for free.",
   },
   invention: {
     name: "Invention",
     icon: Sparkles,
-    description: "Take any two available resources from the bank.",
+    description: "Take two resources from the bank.",
   },
   monopoly: {
     name: "Monopoly",
     icon: Crown,
     description:
-      "Name a resource. Every other player gives you all cards of that resource.",
+      "Take all cards of one resource from the other players.",
   },
 };
 function Dice({ value }) {
@@ -1560,39 +1504,6 @@ function Dice({ value }) {
     </span>
   );
 }
-function ResourcePicker({ values, onChange, max = {}, label, busy = false }) {
-  return (
-    <div className="resource-picker" aria-label={label}>
-      {RES.map((r) => (
-        <div className="resource-picker-row" key={r}>
-          <span className="resource-dot" style={{ background: META[r].color }}>
-            <ResourceIcon resource={r} size={17} />
-          </span>
-          <strong>{META[r].name}</strong>
-          <div className="quantity">
-            <button
-              aria-label={`Remove ${META[r].name} from ${label}`}
-              disabled={busy || !values[r]}
-              onClick={() =>
-                onChange({ ...values, [r]: Math.max(0, (values[r] || 0) - 1) })
-              }
-            >
-              <Minus size={13} />
-            </button>
-            <span>{values[r] || 0}</span>
-            <button
-              aria-label={`Add ${META[r].name} to ${label}`}
-              disabled={busy || values[r] >= (max[r] ?? 99)}
-              onClick={() => onChange({ ...values, [r]: (values[r] || 0) + 1 })}
-            >
-              <Plus size={13} />
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 function ResourceSummary({ resources }) {
   return (
     <span className="resource-summary">
@@ -1605,85 +1516,20 @@ function ResourceSummary({ resources }) {
     </span>
   );
 }
-function DevelopmentModal({ card, game, onClose, onAction }) {
-  const meta = DEV_META[card.type] || DEV_META.knight,
-    [resource, setResource] = useState("wood"),
-    [resources, setResources] = useState(EMPTY),
-    Icon = meta.icon;
-  return (
-    <Modal title={meta.name} eyebrow="DEVELOPMENT CARD" onClose={onClose}>
-      <div className="development-illustration">
-        <Icon size={52} strokeWidth={1} />
-      </div>
-      <p className="modal-description">{meta.description}</p>
-      {card.type === "monopoly" && (
-        <label className="field-label">
-          Resource to claim
-          <select
-            value={resource}
-            onChange={(e) => setResource(e.target.value)}
-          >
-            {RES.map((r) => (
-              <option key={r} value={r}>
-                {META[r].name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {card.type === "invention" && (
-        <>
-          <ResourcePicker
-            label="invention"
-            values={resources}
-            onChange={setResources}
-            max={game.bank}
-          />
-          <p className="selection-count">
-            {total(resources)} / 2 resources selected
-          </p>
-        </>
-      )}
-      {card.type === "victoryPoint" ? (
-        <Button className="full" onClick={onClose}>
-          Close
-        </Button>
-      ) : (
-        <Button
-          className="full"
-          disabled={card.type === "invention" && total(resources) !== 2}
-          onClick={async () => {
-            if (
-              await onAction("playDevelopment", {
-                cardId: card.id,
-                resource,
-                resources,
-              })
-            )
-              onClose();
-          }}
-        >
-          Play {meta.name.toLowerCase()}
-          <ArrowRight size={16} />
-        </Button>
-      )}
-    </Modal>
-  );
-}
-function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
+const developmentTrayId = "match-development-tray";
+
+function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onLeave }) {
   const game = lobby.game,
     me = game.players.find((p) => p.id === meId),
     active = game.players.find((p) => p.id === game.activePlayerId),
-    myTurn = meId === game.activePlayerId,
-    host = lobby.hostId === meId;
-  const [abandon, setAbandon] = useState(false),
-    [mode, setMode] = useState(null),
+    myTurn = meId === game.activePlayerId;
+  const [mode, setMode] = useState(null),
     [trade, setTrade] = useState(null),
-    [dev, setDev] = useState(null),
+    [devId, setDevId] = useState(null),
     [sidebar, setSidebar] = useState("activity"),
     [chatFocus, setChatFocus] = useState(0),
     [now, setNow] = useState(Date.now());
-  const matchPage = useRef(null);
+  const devTrigger = useRef(null), matchPage = useRef(null);
   useLayoutEffect(() => {
     if (chatFocus) matchPage.current?.querySelector(".chat-input input")?.focus({ preventScroll: true });
   }, [chatFocus]);
@@ -1697,8 +1543,8 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
   useEffect(() => {
     setMode(null);
     setTrade(null);
-    setDev(null);
-  }, [game.phase, game.activePlayerId, game.roadBuildingRemaining]);
+    setDevId(null);
+  }, [game.phase, game.activePlayerId, game.roadBuildingRemaining, game.turn]);
   if (!me)
     return (
       <main className="loading-state">
@@ -1709,6 +1555,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
   if (game.phase === "finished")
     return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave }} Board={Board} resourceMeta={META} />;
   const action = async (type, payload = {}) => {
+    if (type !== "playDevelopment") setDevId(null);
     const result = await command("gameAction", { type, ...payload });
     if (
       result &&
@@ -1717,19 +1564,30 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
       setMode(null);
     return result;
   };
-  const canAct =
-      myTurn && game.phase === "action" && !game.roadBuildingRemaining,
-    canDev =
-      myTurn &&
-      ["roll", "action"].includes(game.phase) &&
-      !game.developmentPlayed &&
-      !game.roadBuildingRemaining;
-  const openTrade = () => {
-    setMode(null);
-    setTrade(true);
-  };
+  const canAct = myTurn && game.phase === "action" && !game.roadBuildingRemaining;
+  const openTrade = () => { setDevId(null); setMode(null); setTrade(true); };
   const closeTrade = () => setTrade(false);
   const discardCount = game.phase === "discard" ? game.discardRequired?.[meId] || 0 : 0;
+  const blockingPrompt = game.phase === "finished" || discardCount > 0 ||
+    (myTurn && (["robber", "steal"].includes(game.phase) || game.roadBuildingRemaining > 0));
+  const dev = !blockingPrompt && me.development?.find(card => card.id === devId);
+  const closeDevelopment = () => { setDevId(null); devTrigger.current?.focus({ preventScroll: true }); };
+  const inspectDevelopment = (id, trigger) => {
+    if (id === devId) return closeDevelopment();
+    devTrigger.current = trigger;
+    setTrade(false);
+    setMode(null);
+    setDevId(id);
+  };
+  const playDevelopment = async (payload) => {
+    const tray = matchPage.current?.querySelector(`#${developmentTrayId}`);
+    if (await action("playDevelopment", payload)) {
+      setDevId(id => id === payload.cardId ? null : id);
+      if (document.activeElement === document.body || tray?.contains(document.activeElement)) {
+        matchPage.current?.querySelector(".game-board")?.focus({ preventScroll: true });
+      }
+    }
+  };
   const afford = (type) =>
       Object.entries(COSTS[type]).every(
         ([r, n]) => (me.resources?.[r] || 0) >= n,
@@ -1751,7 +1609,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
               : game.phase === "robber"
                 ? "Move the robber to a highlighted tile."
                 : game.phase === "steal"
-                  ? "Choose a player to steal from."
+                  ? null
                   : mode
                     ? `Choose a highlighted ${mode === "road" ? "edge" : "location"} for your ${mode}.`
                     : "Trade or build, then end your turn.";
@@ -1799,11 +1657,11 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
             <CircleHelp size={15} />
             Rules
           </button>
-          {host && (
+          {onAbandon && (
             <button
               className="text-button"
               aria-label="End current match"
-              onClick={() => setAbandon(true)}
+              onClick={onAbandon}
             >
               <LogOut size={15} />
               End match
@@ -1951,7 +1809,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
               game={game}
               meId={meId}
               mode={mode}
-              previewCities={!mode && !busy && canAct && afford("city")}
+              previewCities={!dev && !mode && !busy && canAct && afford("city")}
               onAction={action}
             />
             <div className="board-caption">
@@ -1962,6 +1820,14 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
           </div>
           <div className="match-dock">
             <div className="action-bar">
+              {dev && (
+                <DevelopmentTray id={developmentTrayId} key={dev.id} card={dev} game={game} meta={DEV_META[dev.type] || DEV_META.knight}
+                  restriction={developmentRestriction(dev, game, meId)} busy={!!busy} onClose={closeDevelopment} onPlay={playDevelopment}
+                  resourceTypes={RES} resourceMeta={META} />
+              )}
+              {game.phase === "steal" && myTurn && (
+                <RobberTray players={game.players} targetIds={game.stealTargets} busy={!!busy} onAction={action} />
+              )}
               <div className="dice-group">
                 <Dice value={game.dice?.[0]} />
                 <Dice value={game.dice?.[1]} />
@@ -1992,7 +1858,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                           ? me.settlementsLeft
                           : me.citiesLeft)
                     }
-                    onClick={() => setMode(mode === type ? null : type)}
+                    onClick={() => { setDevId(null); setTrade(null); setMode(mode === type ? null : type); }}
                   >
                     <Icon size={18} />
                     <span>
@@ -2093,17 +1959,17 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                     dealtDevelopment.map((card) => {
                       const meta = DEV_META[card.type] || DEV_META.knight,
                         Icon = meta.icon,
-                        available =
-                          card.type === "victoryPoint" ||
-                          (canDev && card.turnBought !== game.turn);
+                        restriction = developmentRestriction(card, game, meId);
                       return (
                         <button
                           key={card.id}
                           data-deal-card={card.id}
                           className={`development-card ${card.type === "victoryPoint" ? "victory" : ""}`}
-                          disabled={!available}
-                          onClick={() => setDev(card)}
-                          title={`${meta.name}${card.turnBought === game.turn ? " — available next turn" : ""}`}
+                          disabled={blockingPrompt}
+                          aria-description={restriction || undefined}
+                          aria-expanded={!blockingPrompt ? dev?.id === card.id : undefined}
+                          aria-controls={dev?.id === card.id ? developmentTrayId : undefined}
+                          onClick={event => inspectDevelopment(card.id, event.currentTarget)}
                         >
                           <Icon size={23} strokeWidth={1.3} />
                           <strong>{meta.name}</strong>
@@ -2161,60 +2027,13 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
         </aside>
       </div>
       <CardDealLayer scope={matchPage} game={game} me={me} deals={deals} resourceMeta={META} developmentMeta={DEV_META} />
-      {abandon && (
-        <Modal title="End current game?" onClose={() => setAbandon(false)}>
-          <p className="modal-description">
-            All players will return to the lobby. Current game progress will be
-            lost.
-          </p>
-          <div className="modal-actions">
-            <Button variant="outline" onClick={() => setAbandon(false)}>
-              Keep playing
-            </Button>
-            <Button onClick={() => command("abandonGame")}>End match</Button>
-          </div>
-        </Modal>
-      )}
-      {dev && (
-        <DevelopmentModal
-          card={dev}
-          game={game}
-          onClose={() => setDev(null)}
-          onAction={action}
-        />
-      )}
-      {game.phase === "steal" && myTurn && (
-        <Modal title="Steal a resource" eyebrow="THE ROBBER">
-          <p className="modal-description">
-            Take one random resource from a neighboring opponent.
-          </p>
-          <div className="steal-players">
-            {game.stealTargets?.map((id) => {
-              const p = game.players.find((p) => p.id === id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => action("steal", { targetId: id })}
-                >
-                  <span className="avatar" style={{ "--player": p.color }}>
-                    {p.name.slice(0, 1)}
-                  </span>
-                  <strong>{p.name}</strong>
-                  <span>{p.resourceCount} cards</span>
-                  <ArrowRight size={17} />
-                </button>
-              );
-            })}
-          </div>
-        </Modal>
-      )}
     </main>
   );
 }
 
-function Guide({ onClose }) {
+function Guide({ onClose, feedback }) {
   return (
-    <Modal title="Game rules" onClose={onClose} wide>
+    <TableDialog title="Game rules" icon={ScrollText} onClose={onClose} dismissLabel="Close rules" feedback={feedback} wide>
       <div className="guide-grid">
         <section>
           <h3>
@@ -2288,11 +2107,7 @@ function Guide({ onClose }) {
         </p>
       </div>
       <KeyboardShortcuts />
-      <Button onClick={onClose} className="full">
-        Close
-        <ArrowRight size={17} />
-      </Button>
-    </Modal>
+    </TableDialog>
   );
 }
 
@@ -2309,14 +2124,14 @@ class AppErrorBoundary extends React.Component {
   }
   render() {
     return this.state.failed ? (
-      <main className="loading-state" role="alert">
+      <main className="table-recovery" role="alert">
         <Compass size={45} />
         <h2>Unable to display the game</h2>
         <p>Reload to reconnect to your game.</p>
-        <Button onClick={() => location.reload()}>
+        <button type="button" className="draft-command match-command" data-tone="gold" onClick={() => location.reload()}>
           <RefreshCw size={17} />
           Reload
-        </Button>
+        </button>
       </main>
     ) : (
       this.props.children

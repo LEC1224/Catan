@@ -23,13 +23,11 @@ function ResourceFace({ card, dealId, fan }) {
 }
 
 export function ResourceCardRow({ cards, meta, Face = ResourceFace, zone, label, labelledBy, onCard, actionLabel,
-  blocked, busy, marker: Marker, size, emptySlot = false }) {
+  blocked, busy, marker: Marker, size, emptySlot = false, slots = 0 }) {
+  const openSlots = Math.max(slots - cards.length, emptySlot && !cards.length ? 1 : 0);
   return (
     <ul className="draft-card-row" data-draft-zone={zone} data-size={size} aria-label={label} aria-labelledby={labelledBy}
       tabIndex={size === "offer" && cards.length > 4 ? 0 : undefined}>
-      {emptySlot && !cards.length && (
-        <li className="draft-slot-placeholder" aria-hidden="true"><Minus size={18} /></li>
-      )}
       {cards.map(card => {
         const resource = { ...meta[card.type], type: card.type };
         const unavailable = blocked?.(card);
@@ -47,6 +45,9 @@ export function ResourceCardRow({ cards, meta, Face = ResourceFace, zone, label,
           </li>
         );
       })}
+      {Array.from({ length: openSlots }, (_, index) => (
+        <li key={`slot:${index}`} className="draft-slot-placeholder" aria-hidden="true"><Minus size={18} /></li>
+      ))}
     </ul>
   );
 }

@@ -10,10 +10,8 @@ const actionKeys = {
 export const shortcutProps = (action) => ({ "data-match-shortcut": action, "aria-keyshortcuts": actionKeys[action] });
 
 const controls = "button, a[href], [role='button'], [data-pointer-action]";
-const dialogSelector = "[data-keyboard-dialog]";
-const topDialog = () => [...document.querySelectorAll(dialogSelector)].at(-1);
 const available = (control) => control && control.getClientRects().length &&
-  !control.closest(":disabled, [aria-disabled='true'], [inert], [hidden]");
+  !control.closest(":disabled, [aria-disabled='true'], [inert], [hidden]") && getComputedStyle(control).visibility === "visible";
 const ignore = (event) => event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey;
 
 function consume(event) {
@@ -50,12 +48,10 @@ export function MatchShortcuts({ scope, onChat, onEscape }) {
       const match = scope.current;
       if (!match) return;
       const target = event.target instanceof Element ? event.target : null;
-      const dialog = topDialog();
-      if (dialog && !activation) return;
-      if (!dialog && target && target !== document.body && target !== document.documentElement && !match.contains(target)) return;
-      const area = dialog ?? match;
-      if (target && area.contains(target) && (target.isContentEditable || target.closest("input, textarea, select, [role='textbox']"))) {
-        if (!dialog && key === "escape" && !event.repeat && target.matches(".chat-input input")) {
+      if (document.querySelector("dialog[open]") || (key !== "escape" && target?.closest("[data-table-tray]"))) return;
+      if (target && target !== document.body && target !== document.documentElement && !match.contains(target)) return;
+      if (target && match.contains(target) && (target.isContentEditable || target.closest("input, textarea, select, [role='textbox']"))) {
+        if (key === "escape" && !event.repeat && target.matches(".chat-input input")) {
           consume(event);
           target.blur();
         }
@@ -79,25 +75,25 @@ export function MatchShortcuts({ scope, onChat, onEscape }) {
       };
 
       if (key === "escape") {
-        if (!run(command("decline")) && handlers.current.onEscape()) consume(event);
+        if (!run(command("closeDevelopment")) && !run(command("decline")) && handlers.current.onEscape()) consume(event);
       } else if (key === "t") {
         consume(event);
         handlers.current.onChat();
       } else if (!activation) {
         run(command(directActions[key]));
       } else {
-        const focused = area.contains(target) ? target?.closest(controls) : null;
+        const focused = match.contains(target) ? target?.closest(controls) : null;
         if (focused && keyboardFocus === target) {
           if (!run(focused)) consume(event);
           return;
         }
-        if (!dialog && (run(command("roll")) || run(command("accept")))) return;
+        if (run(command("roll")) || run(command("accept"))) return;
         if (pointer) {
           const hit = document.elementFromPoint(...pointer);
-          if (area.contains(hit) && run(hit.closest(controls), hit)) return;
+          if (match.contains(hit) && run(hit.closest(controls), hit)) return;
         } else if (run(focused)) return;
-        // Do not re-click a stale mouse focus or activate a control behind a dialog.
-        if (focused || (dialog && target && !area.contains(target))) consume(event);
+        // Do not re-click a stale mouse focus.
+        if (focused) consume(event);
       }
     }
 
@@ -119,42 +115,11 @@ export function MatchShortcuts({ scope, onChat, onEscape }) {
   return null;
 }
 
-export function useDialogKeyboard(ref) {
-  useLayoutEffect(() => {
-    const dialog = ref.current;
-    const previous = document.activeElement;
-    dialog.focus({ preventScroll: true });
-    function keyDown(event) {
-      if ((event.key !== "Escape" && event.key !== "Tab") || ignore(event) || topDialog() !== dialog) return;
-      if (event.key === "Escape" && !event.shiftKey && !event.repeat) {
-        const close = dialog.querySelector("[data-dialog-close]");
-        if (close) { consume(event); close.click(); }
-      } else if (event.key === "Tab") {
-        const tabbable = [...dialog.querySelectorAll("button, a[href], input, select, textarea, [tabindex]")]
-          .filter((element) => element.tabIndex >= 0 && available(element));
-        const first = tabbable[0], last = tabbable.at(-1);
-        const focus = document.activeElement;
-        if (!tabbable.includes(focus) || focus === (event.shiftKey ? first : last)) {
-          consume(event);
-          (event.shiftKey ? last : first)?.focus();
-        }
-      }
-    }
-    document.addEventListener("keydown", keyDown);
-    return () => {
-      document.removeEventListener("keydown", keyDown);
-      if (previous?.isConnected && (dialog.contains(document.activeElement) || document.activeElement === document.body)) {
-        previous.focus({ preventScroll: true });
-      }
-    };
-  }, [ref]);
-}
-
 export function KeyboardShortcuts({ tableNavigation = false }) {
   const heading = useId();
   const entries = [
     [["Space", "Enter"], "Activate the control you focused with the keyboard. Otherwise, roll when the dice are ready, accept the displayed offer if you can, or click the button, card or board spot under your pointer."],
-    [["Esc"], `Close an open dialog or leave the message field. During play, decline the displayed incoming offer. With no offer, cancel your build selection or close the trade tray${tableNavigation ? " or a compact side panel" : ""}.`],
+    [["Esc"], `Close the rules, confirmation or open card, or leave the message field. Otherwise, decline the displayed incoming offer, cancel your build selection or close the trade tray${tableNavigation ? " or a compact side panel" : ""}.`],
     [[actionKeys.chat], "Open chat and focus the message field. Press Enter in the field to send."],
     [[actionKeys.development], "Buy a development card."],
     [[actionKeys.road, actionKeys.settlement, actionKeys.city], "Select Road, Settlement or City, then choose a location on the board."],

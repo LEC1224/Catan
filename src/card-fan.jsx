@@ -28,7 +28,7 @@ function fanLayout(count, viewportWidth, preferred, clustered) {
   return { face, step, start: (width - face - intervals * step) / 2 };
 }
 
-export function CardFan({ kind, title, icon: Icon, cards: owned, empty, discardThreshold, onInspect, selection,
+export function CardFan({ kind, title, icon: Icon, cards: owned, empty, discardThreshold, onInspect, inspected, inspectionId, selection,
   pending, Face }) {
   const [clustered, setClustered] = useState(() => matchMedia(phone).matches);
   const cards = owned.filter(card => !pending?.has(card.id) && !selection?.selected.has(card.id));
@@ -95,7 +95,7 @@ export function CardFan({ kind, title, icon: Icon, cards: owned, empty, discardT
               const laneWidth = clustered || index === piles.length - 1 ? face : step;
               const label = selection ? selection.label(card.name) : `${card.name}${card.isVictory ? ", one hidden victory point" : ""}${card.restriction ? `, ${card.restriction}` : ""}`;
               return (
-                <li className="fan-slot" key={key} data-highlighted={highlight === key}
+                <li className="fan-slot" key={key} data-highlighted={highlight === key || inspected === card.id}
                   style={{ "--card-x": `${start + index * step}px`, "--lane-width": `${laneWidth}px`,
                     "--card-tilt": `${offset * angle}deg`, "--card-dip": `${offset * offset * curve}px`,
                     "--deal-delay": `${Math.min(index, 8) * 22}ms`, "--layer": index + 1 }}>
@@ -104,13 +104,14 @@ export function CardFan({ kind, title, icon: Icon, cards: owned, empty, discardT
                     ref={element => { if (element) targets.current.set(key, element); else targets.current.delete(key); }}
                     tabIndex={tabStop === key ? 0 : -1} aria-label={count > 1 ? `${label}, ${count} in hand` : label}
                     aria-disabled={selection?.blocked(card) || undefined} disabled={selection?.busy}
-                    aria-pressed={selection || onInspect ? undefined : pinned === key} aria-haspopup={onInspect ? "dialog" : undefined}
+                    aria-pressed={selection || onInspect ? undefined : pinned === key}
+                    aria-expanded={onInspect ? inspected === card.id : undefined} aria-controls={inspected === card.id ? inspectionId : undefined}
                     onFocus={() => setFocused(key)} onKeyDown={event => handleKeys(event, index)}
                     onPointerEnter={event => { if (event.pointerType !== "touch") setHovered(key); }}
                     onPointerLeave={() => setHovered(current => current === key ? null : current)}
                     onClick={event => {
                       if (selection) selection.pick(card, event);
-                      else if (onInspect) onInspect(card.id);
+                      else if (onInspect) onInspect(card.id, event.currentTarget);
                       else setPinned(current => current === key ? null : key);
                     }}>
                     <Face card={card} kind={kind} fan dealId={card.id} />
