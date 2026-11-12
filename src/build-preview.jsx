@@ -3,7 +3,7 @@ import "./build-preview.css";
 
 export function BuildPreview({ hit, onBuild, original, children }) {
   return (
-    <g className="build-preview-target" aria-hidden="true" onClick={({ nativeEvent }) => {
+    <g className="build-preview-target" data-pointer-action="" aria-hidden="true" onClick={({ nativeEvent }) => {
       if (nativeEvent.pointerType !== "touch" && !nativeEvent.sourceCapabilities?.firesTouchEvents) onBuild();
     }}>
       {hit}

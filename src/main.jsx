@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useId, useMemo, useRef } from "react";
+import React, { useState, useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { attachBotController } from "./bots/controller.js";
-import { openTradeOffers } from "../shared/trades.js";
+import { openTradeOffers, playerTradesAvailable } from "../shared/trades.js";
 import { ResourceCardDraft, ResourceOfferCards } from "./resource-card-draft.jsx";
 import {
   Anchor,
@@ -60,6 +60,7 @@ import "./match-framing.css";
 import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
 import { useRollReminder } from "./roll-reminder.js";
 import { MatchResults } from "./match-results.jsx";
+import { KeyboardShortcuts, MatchShortcuts, shortcutProps, useDialogKeyboard } from "./match-shortcuts.jsx";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
@@ -148,6 +149,8 @@ function Toggle({ checked, onChange, label, description, disabled = false }) {
   );
 }
 function Modal({ title, eyebrow, children, onClose, wide = false }) {
+  const dialog = useRef(null);
+  useDialogKeyboard(dialog);
   return (
     <div
       className="modal-shade"
@@ -158,6 +161,9 @@ function Modal({ title, eyebrow, children, onClose, wide = false }) {
     >
       <section
         className={`modal ${wide ? "wide" : ""}`}
+        ref={dialog}
+        tabIndex={-1}
+        data-keyboard-dialog=""
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -168,6 +174,8 @@ function Modal({ title, eyebrow, children, onClose, wide = false }) {
           {onClose && (
             <button
               className="icon-button close"
+              type="button"
+              data-dialog-close=""
               onClick={onClose}
               aria-label="Close dialog"
             >
@@ -1656,8 +1664,12 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
     [trade, setTrade] = useState(null),
     [dev, setDev] = useState(null),
     [sidebar, setSidebar] = useState("activity"),
+    [chatFocus, setChatFocus] = useState(0),
     [now, setNow] = useState(Date.now());
   const matchPage = useRef(null);
+  useLayoutEffect(() => {
+    if (chatFocus) matchPage.current?.querySelector(".chat-input input")?.focus({ preventScroll: true });
+  }, [chatFocus]);
   const remindRoll = useRollReminder(myTurn && game.phase === "roll" && !game.roadBuildingRemaining && !busy);
   const deals = useCardDeals({ matchId: lobby.matchId || lobby.id, stream: lobby.cardDealStream,
     game, me: game.phase === "finished" ? null : me });
@@ -1732,9 +1744,21 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
     canAccept =
       offered &&
       me.id !== offered.from &&
+      playerTradesAvailable(game) &&
       RES.every((r) => (me.resources?.[r] || 0) >= (offered.want?.[r] || 0));
+  const openChat = () => {
+    setSidebar("chat");
+    setChatFocus((request) => request + 1);
+  };
+  const dismiss = () => {
+    if (trade && canAct) closeTrade();
+    else if (mode) setMode(null);
+    else return false;
+    return true;
+  };
   return (
     <main className="game-page" ref={matchPage}>
+      <MatchShortcuts scope={matchPage} onChat={openChat} onEscape={dismiss} />
       <div className="game-topline">
         <div>
           <span className="eyebrow">
@@ -1754,7 +1778,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
             <Package size={15} />
             {game.settings.discardThreshold} safe cards
           </span>
-          <button className="text-button" onClick={onHelp}>
+          <button className="text-button" {...shortcutProps("help")} onClick={onHelp}>
             <CircleHelp size={15} />
             Rules
           </button>
@@ -1939,8 +1963,11 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                   <button
                     key={type}
                     className={`build-action ${mode === type ? "selected" : ""}`}
+                    aria-pressed={mode === type}
+                    {...shortcutProps(type)}
                     disabled={
                       !canAct ||
+                      !!busy ||
                       !afford(type) ||
                       !(type === "road"
                         ? me.roadsLeft
@@ -1959,8 +1986,10 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                 ))}
                 <button
                   className="build-action"
+                  {...shortcutProps("development")}
                   disabled={
                     !canAct ||
+                    !!busy ||
                     !afford("development") ||
                     !game.developmentRemaining
                   }
@@ -1978,6 +2007,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                   <Button
                     className="roll-reminder"
                     data-roll-reminder={remindRoll || undefined}
+                    {...shortcutProps("roll")}
                     onClick={() => action("rollDice")}
                     disabled={!!busy || game.roadBuildingRemaining > 0}
                   >
@@ -1997,6 +2027,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                       Trade
                     </Button>
                     <Button
+                      {...shortcutProps("endTurn")}
                       disabled={!canAct || !!busy}
                       onClick={() => action("endTurn")}
                     >
@@ -2021,10 +2052,11 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                   </Button>
                 ) : (
                   <>
-                    <Button variant="outline" disabled={!!busy} onClick={() => action("declineTrade", { offerId: offered.id })}>
+                    <Button variant="outline" {...shortcutProps("decline")} disabled={!!busy} onClick={() => action("declineTrade", { offerId: offered.id })}>
                       Decline
                     </Button>
                     <Button
+                      {...shortcutProps("accept")}
                       disabled={!canAccept || !!busy}
                       onClick={() => action("acceptTrade", { offerId: offered.id })}
                     >
@@ -2090,6 +2122,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
             </button>
             <button
               className={sidebar === "chat" ? "selected" : ""}
+              {...shortcutProps("chat")}
               onClick={() => setSidebar("chat")}
             >
               <MessageSquare size={14} />
@@ -2237,6 +2270,7 @@ function Guide({ onClose }) {
           at 3:1, or 2:1 for its resource. Only the active player can trade.
         </p>
       </div>
+      <KeyboardShortcuts />
       <Button onClick={onClose} className="full">
         Close
         <ArrowRight size={17} />

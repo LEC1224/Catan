@@ -2189,6 +2189,39 @@ select:disabled {
   font-size: 10px;
   line-height: 1.8;
 }
+.guide-shortcuts {
+  margin: 22px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.guide-shortcuts h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.guide-shortcuts dl { margin: 0; }
+.guide-shortcuts dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 10rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid #a992634f;
+}
+.guide-shortcuts dt { display: flex; flex-wrap: wrap; gap: 4px; }
+.guide-shortcuts dd { margin: 0; }
+.guide-shortcuts kbd {
+  border: 1px solid #a9926399;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font: inherit;
+  font-weight: 600;
+}
+@media (max-width: 480px) {
+  .guide-shortcuts dl > div { grid-template-columns: 1fr; gap: 4px; }
+}
 .loading-state {
   display: flex;
   align-items: center;
