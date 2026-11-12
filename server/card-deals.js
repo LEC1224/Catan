@@ -19,11 +19,11 @@ export function recordDeal(game, action, moves) {
 
 export function viewCardDeals(history, playerId) {
   return (history ?? []).map(({ id, action, moves }) => {
-    const publicFaces = ['rollDice', 'placeSettlement', 'bankTrade'].includes(action);
+    const publicFaces = ['rollDice', 'placeSettlement', 'placeRoad', 'upgradeCity', 'bankTrade'].includes(action);
     const hidden = new Map();
     const visible = [];
     for (const { from, to, kind, count, ...face } of moves) {
-      if (publicFaces || from.id === playerId || to.id === playerId) {
+      if (publicFaces || (action === 'buyDevelopment' && kind === 'resource') || from.id === playerId || to.id === playerId) {
         visible.push({ from, to, kind, count, ...face });
       } else {
         // A spectator can see the handoff, but not the card type, ID, or mix.

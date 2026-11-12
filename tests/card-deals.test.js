@@ -94,11 +94,44 @@ test('only the buyer sees the face of a development card and deal history stays 
   assert.equal(own.cardDeals.at(-1).id, 13);
   assert.equal(own.cardDeals[0].id, 2);
   const card = own.players[0].development.at(-1);
+  const payment = ['wool', 'wheat', 'ore'].map(type => resource(player('a'), bank, type, 1));
   assert.deepEqual(own.cardDeals.at(-1).moves, [
+    ...payment,
     { from: bank, to: player('a'), kind: 'development', count: 1, type: card.type, cardId: card.id },
   ]);
   assert.deepEqual(other.cardDeals.at(-1).moves, [
+    ...payment,
     { from: bank, to: player('a'), kind: 'development', count: 1 },
   ]);
   assert.equal(other.players[0].development, null);
+});
+
+test('builds record the public costs paid to the bank and free or failed placements do not', () => {
+  const g = game();
+  const home = viewGame(g, 'a').legal.settlements[0];
+  action(g, 'a', 'placeSettlement', { vertexId: home });
+  const first = g.board.edges.find(e => e.id === viewGame(g, 'a').legal.roads[0]);
+  action(g, 'a', 'placeRoad', { edgeId: first.id });
+  g.phase = 'action'; g.activePlayerId = 'a'; g.turn = 1;
+  assert.throws(() => action(g, 'a', 'upgradeCity', { vertexId: home }), /enough resources/);
+  assert.deepEqual(viewGame(g, 'b').cardDeals, []);
+
+  Object.assign(g.players[0].resources, { wood: 2, brick: 2, wool: 1, wheat: 3, ore: 3 });
+  const adjacent = first.a === home ? first.b : first.a;
+  const second = g.board.edges.find(e => e.id !== first.id && [e.a, e.b].includes(adjacent));
+  const town = second.a === adjacent ? second.b : second.a;
+  action(g, 'a', 'placeRoad', { edgeId: second.id });
+  action(g, 'a', 'placeSettlement', { vertexId: town });
+  action(g, 'a', 'upgradeCity', { vertexId: home });
+  const paid = viewGame(g, 'b').cardDeals;
+  assert.deepEqual(paid.map(({ action, moves }) => [action, moves]), [
+    ['placeRoad', ['wood', 'brick'].map(type => resource(player('a'), bank, type, 1))],
+    ['placeSettlement', ['wood', 'brick', 'wool', 'wheat'].map(type => resource(player('a'), bank, type, 1))],
+    ['upgradeCity', [resource(player('a'), bank, 'wheat', 2), resource(player('a'), bank, 'ore', 3)]],
+  ]);
+
+  g.players[0].development.push({ id: 'free-roads', type: 'roadBuilding', turnBought: 0 });
+  action(g, 'a', 'playDevelopment', { cardId: 'free-roads' });
+  action(g, 'a', 'placeRoad', { edgeId: viewGame(g, 'a').legal.roads[0] });
+  assert.deepEqual(viewGame(g, 'b').cardDeals, paid);
 });

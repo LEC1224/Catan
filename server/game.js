@@ -93,7 +93,11 @@ function resourceMap(value, { nonzero = false } = {}) {
   return map;
 }
 function canPay(p, cost) { return Object.entries(cost).every(([r, n]) => p.resources[r] >= n); }
-function pay(g, p, cost) { requireThat(canPay(p, cost), 'You do not have enough resources.'); for (const [r, n] of Object.entries(cost)) { p.resources[r] -= n; g.bank[r] += n; } }
+function pay(g, p, cost, moves) {
+  requireThat(canPay(p, cost), 'You do not have enough resources.');
+  for (const [r, n] of Object.entries(cost)) { p.resources[r] -= n; g.bank[r] += n; }
+  if (moves) moveResources(moves, playerHand(p.id), bank, cost);
+}
 function grant(g, p, map) { for (const [r, n] of Object.entries(map)) { requireThat(g.bank[r] >= n, `The supply does not have enough ${r}.`); g.bank[r] -= n; p.resources[r] += n; } }
 function produceResources(g, total, moves) {
   const due = Object.fromEntries(RESOURCES.map(r => [r, new Map()]));
@@ -293,7 +297,7 @@ function applyAction(g, id, type, payload, moves) {
       const setup = g.phase === 'setupSettlement';
       requireThat(setup || g.phase === 'action', 'You cannot build a settlement now.');
       requireThat(settlementTargets(g, id, setup).includes(payload.vertexId), 'That settlement position is not legal.');
-      if (!setup) pay(g, p, COSTS.settlement);
+      if (!setup) pay(g, p, COSTS.settlement, moves);
       const v = vertex(g, payload.vertexId); v.building = { owner: id, type: 'settlement' }; addLog(g, `${p.name} built a settlement.`);
       if (setup) {
         g.setupVertexId = v.id;
@@ -312,7 +316,7 @@ function applyAction(g, id, type, payload, moves) {
       const setup = g.phase === 'setupRoad';
       requireThat(setup || g.phase === 'action', 'You cannot build a road now.');
       requireThat(roadTargets(g, id, setup).includes(payload.edgeId), 'That road position is not legal.');
-      if (!setup && !g.roadBuildingRemaining) pay(g, p, COSTS.road);
+      if (!setup && !g.roadBuildingRemaining) pay(g, p, COSTS.road, moves);
       edge(g, payload.edgeId).owner = id; addLog(g, `${p.name} built a road.`);
       if (setup) {
         g.setupIndex++;
@@ -329,7 +333,7 @@ function applyAction(g, id, type, payload, moves) {
       requireThat(g.phase === 'action', 'You can upgrade only in your action phase.');
       const v = vertex(g, payload.vertexId);
       requireThat(v?.building?.owner === id && v.building.type === 'settlement' && p.citiesLeft > 0, 'Choose one of your settlements and an available city.');
-      pay(g, p, COSTS.city); v.building.type = 'city'; addLog(g, `${p.name} upgraded a settlement to a city.`); break;
+      pay(g, p, COSTS.city, moves); v.building.type = 'city'; addLog(g, `${p.name} upgraded a settlement to a city.`); break;
     }
     case 'rollDice': {
       requireThat(g.phase === 'roll', 'You have already rolled this turn.');
@@ -369,8 +373,7 @@ function applyAction(g, id, type, payload, moves) {
       const ratio = bankTradeRate(g.board.vertices, id, give);
       requireThat(g.bank[receive] >= amount, `The supply does not have enough ${receive}.`);
       const given = { [give]: ratio * amount }, received = { [receive]: amount };
-      pay(g, p, given); grant(g, p, received);
-      moveResources(moves, playerHand(id), bank, given);
+      pay(g, p, given, moves); grant(g, p, received);
       moveResources(moves, bank, playerHand(id), received);
       addLog(g, `${p.name} exchanged ${ratio * amount} ${give} for ${amount} ${receive}.`); break;
     }
@@ -385,7 +388,7 @@ function applyAction(g, id, type, payload, moves) {
     case 'buyDevelopment': {
       requireThat(g.phase === 'action', 'Buy development cards during your action phase.');
       requireThat(g.developmentDeck.length > 0, 'The development deck is empty.');
-      pay(g, p, COSTS.development);
+      pay(g, p, COSTS.development, moves);
       const card = { ...g.developmentDeck.pop(), turnBought: g.turn };
       p.development.push(card);
       moves.push({ from: bank, to: playerHand(id), kind: 'development', type: card.type, cardId: card.id, count: 1 });

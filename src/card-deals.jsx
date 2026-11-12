@@ -87,11 +87,13 @@ function tablePoint(root, end, move) {
 
 function planFlights(deals, before, me, rollDelay) {
   const next = { ...before.resources };
+  const spentFrom = { ...before.resources };
   return deals.flatMap(({ id, action, moves }) => {
     const litTiles = new Set();
     return moves.flatMap((move, route) => {
       const { from, to, kind, type, cardId } = move;
       const incoming = belongsTo(to, me.id);
+      const outgoing = belongsTo(from, me.id);
       const fromTile = from.kind === "tile";
       const cue = fromTile && !litTiles.has(from.id);
       if (fromTile) litTiles.add(from.id);
@@ -99,6 +101,11 @@ function planFlights(deals, before, me, rollDelay) {
       return Array.from({ length: shown }, (_, index) => {
         const count = index === shown - 1 ? move.count - index : 1;
         const arrivals = [];
+        let sourceId;
+        if (outgoing && kind === "resource" && type && spentFrom[type] > 0) {
+          sourceId = `${type}:${spentFrom[type] - 1}`;
+          spentFrom[type] = Math.max(0, spentFrom[type] - count);
+        }
         if (incoming && kind === "resource" && type) {
           const start = next[type] || 0;
           const end = Math.min(start + count, me.resources?.[type] || 0);
@@ -107,7 +114,7 @@ function planFlights(deals, before, me, rollDelay) {
         } else if (incoming && cardId && me.development?.some(card => card.id === cardId)) {
           arrivals.push(cardId);
         }
-        return { key: `${id}:${route}:${index}`, move, count, arrivals, cue: cue && index === 0, pop: action === "rollDice",
+        return { key: `${id}:${route}:${index}`, move, count, arrivals, sourceId, cue: cue && index === 0, pop: action === "rollDice",
           delay: (action === "rollDice" ? rollDelay : 0) + Math.min(180, route * 38) + index * 72 };
       });
     });
@@ -130,7 +137,7 @@ function flightPath(from, to, width, height, outgoing, incoming, fromTile) {
     return { offset, transform: `translate3d(${x - width / 2}px, ${y - height / 2}px, 0) rotate(${angle}deg) scale(${scale * grow})`, opacity };
   };
   if (!fromTile) return {
-    frames: [0, .12, .44, .76, 1].map(t => frame(t, t, t ? 1 : 0)),
+    frames: [0, .12, .44, .76, 1].map(t => frame(t, t, outgoing || t ? 1 : 0)),
     duration: clamp(475 + distance * .22, 500, 680), easing: "cubic-bezier(.28,.56,.33,1)",
   };
   const hold = 195;
@@ -154,7 +161,31 @@ function TravelFace({ card, kind }) {
   </span>;
 }
 
-function FlyingCard({ flight, scope, meId, face, Face, done }) {
+// The cards being paid may disappear in this commit. Read their actual screen positions before the DOM changes.
+class OutgoingCardPositions extends React.Component {
+  getSnapshotBeforeUpdate(previous) {
+    const { flights, scope, meId } = this.props;
+    const root = scope.current;
+    if (!root || flights === previous.flights || !flights.length) return null;
+    const seen = new Set(previous.flights);
+    const points = [];
+    for (const flight of flights) {
+      const { move, sourceId } = flight;
+      if (seen.has(flight) || move.from.kind !== "player") continue;
+      const origin = belongsTo(move.from, meId) ? handPoint(root, move, sourceId) : tablePoint(root, move.from, move);
+      if (origin) points.push([flight, origin]);
+    }
+    return points;
+  }
+
+  componentDidUpdate(_props, _state, points) {
+    if (points) for (const [flight, origin] of points) this.props.positions.current.set(flight, origin);
+  }
+
+  render() { return null; }
+}
+
+function FlyingCard({ flight, scope, meId, face, Face, done, positions }) {
   const element = useRef(null), turner = useRef(null);
   const { move, delay, arrivals, count, cue } = flight;
   const outgoing = belongsTo(move.from, meId), incoming = belongsTo(move.to, meId);
@@ -172,7 +203,8 @@ function FlyingCard({ flight, scope, meId, face, Face, done }) {
       const endpoint = (end, local, targetId) => local ? handPoint(root, move, targetId)
         : tablePoint(root, end, move) || point(find(root, "relay", relayKey(end)))
           || point(root.querySelector(".match-drawer-button"));
-      const from = endpoint(move.from, outgoing), to = endpoint(move.to, incoming, arrivals[0] || move.cardId);
+      const from = positions.current.get(flight) || endpoint(move.from, outgoing);
+      const to = endpoint(move.to, incoming, arrivals[0] || move.cardId);
       if (!from || !to || !node?.animate) return finish();
       const width = (incoming ? to.width : outgoing ? from.width : null) || 72;
       const height = (incoming ? to.height : outgoing ? from.height : null) || width * 1.34;
@@ -193,7 +225,7 @@ function FlyingCard({ flight, scope, meId, face, Face, done }) {
       motion.finished.then(() => finish(incoming ? to : undefined), () => {});
     }, delay);
     return () => { cancelled = true; clearTimeout(timer); motion?.cancel(); turn?.cancel(); outline?.cancel(); };
-  }, [scope, flight, move, delay, arrivals, cue, incoming, outgoing, reveal, cover, done]);
+  }, [scope, flight, move, delay, arrivals, cue, incoming, outgoing, reveal, cover, done, positions]);
 
   return <span className="deal-flying-card" ref={element}>
     {face ? <span className="deal-card-turner" ref={turner}>
@@ -256,6 +288,7 @@ export function CardDealLayer({ scope, game, me, deals, resourceMeta, developmen
   const { flights, landings, done } = deals;
   const relayRack = useRef(null);
   const settled = useRef(new WeakSet());
+  const positions = useRef(new WeakMap());
   const [relays, setRelays] = useState(emptyMap);
 
   useLayoutEffect(() => {
@@ -301,22 +334,24 @@ export function CardDealLayer({ scope, game, me, deals, resourceMeta, developmen
     }
   }, [landings, scope]);
 
-  if (!flights.length) return null;
-  return <div className="deal-layer" aria-hidden="true">
-    {relays.size > 0 && <div className="deal-relays" ref={relayRack}>
-      {[...relays].map(([key, { end, kind }]) => {
-        const player = game.players.find(p => p.id === end.id);
-        return <span key={key} className="deal-relay">
-          <span className="deal-relay-icon" data-deal-relay={key} style={{ "--deal-player": player?.color }}><CardBack kind={kind} /></span>
-          {player?.name || "Bank"}
-        </span>;
+  return <>
+    <OutgoingCardPositions flights={flights} scope={scope} meId={me.id} positions={positions} />
+    {flights.length > 0 && <div className="deal-layer" aria-hidden="true">
+      {relays.size > 0 && <div className="deal-relays" ref={relayRack}>
+        {[...relays].map(([key, { end, kind }]) => {
+          const player = game.players.find(p => p.id === end.id);
+          return <span key={key} className="deal-relay">
+            <span className="deal-relay-icon" data-deal-relay={key} style={{ "--deal-player": player?.color }}><CardBack kind={kind} /></span>
+            {player?.name || "Bank"}
+          </span>;
+        })}
+      </div>}
+      {flights.map(flight => {
+        const { type, kind } = flight.move;
+        const card = (kind === "resource" ? resourceMeta : developmentMeta)[type];
+        const face = kind === "development" && card ? { ...card, theme: type, isVictory: type === "victoryPoint" } : card;
+        return <FlyingCard key={flight.key} flight={flight} scope={scope} meId={me.id} face={face} Face={Face} done={done} positions={positions} />;
       })}
     </div>}
-    {flights.map(flight => {
-      const { type, kind } = flight.move;
-      const card = (kind === "resource" ? resourceMeta : developmentMeta)[type];
-      const face = kind === "development" && card ? { ...card, theme: type, isVictory: type === "victoryPoint" } : card;
-      return <FlyingCard key={flight.key} flight={flight} scope={scope} meId={me.id} face={face} Face={Face} done={done} />;
-    })}
-  </div>;
+  </>;
 }
