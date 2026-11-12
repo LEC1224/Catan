@@ -2,8 +2,8 @@ import React, { useState, useEffect, useId, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { attachBotController } from "./bots/controller.js";
-import { bankTradeRate, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from "../shared/trades.js";
-import { bankTradeDraft } from "./trade-draft.js";
+import { openTradeOffers } from "../shared/trades.js";
+import { ResourceCardDraft, ResourceOfferCards } from "./resource-card-draft.jsx";
 import {
   Anchor,
   ArrowRight,
@@ -19,7 +19,6 @@ import {
   Globe2,
   Hammer,
   HelpCircle,
-  Landmark,
   LockKeyhole,
   Map,
   MessageSquare,
@@ -1578,51 +1577,6 @@ function ResourceSummary({ resources }) {
     </span>
   );
 }
-function TradeModal({ game, me, busy, initialResource, onClose, onAction }) {
-  const [offer, setOffer] = useState(() => initialResource ? { ...EMPTY(), [initialResource]: 1 } : EMPTY());
-  const [want, setWant] = useState(EMPTY);
-  const give = Object.fromEntries(RES.map((r) => [r, Math.min(offer[r], me.resources?.[r] || 0)]));
-  const giveMax = Object.fromEntries(RES.map((r) => [r, want[r] ? 0 : me.resources?.[r] || 0]));
-  const wantMax = Object.fromEntries(RES.map((r) => [r, give[r] ? 0 : 150]));
-  const bank = bankTradeDraft(give, want, game.bank,
-    (type) => bankTradeRate(game.board.vertices, me.id, type), (type) => META[type].name.toLowerCase());
-  const complete = total(give) > 0 && total(want) > 0 && !RES.some((r) => give[r] && want[r]);
-  const playerTrading = playerTradesAvailable(game);
-  const full = openTradeOffers(game).length >= MAX_TRADE_OFFERS;
-  const hint = complete && playerTrading && full ? "Withdraw an offer to send another." : bank.hint;
-
-  async function submit(type, payload) {
-    if (await onAction(type, payload)) onClose();
-  }
-
-  return (
-    <Modal title="Trade" onClose={onClose}>
-      <div className="trade-pickers">
-        <div>
-          <h4>You give</h4>
-          <ResourcePicker label="what you give" values={give} max={giveMax} busy={busy} onChange={setOffer} />
-        </div>
-        <div>
-          <h4>You get</h4>
-          <ResourcePicker label="what you get" values={want} max={wantMax} busy={busy} onChange={setWant} />
-        </div>
-      </div>
-      <p className="trade-modal-status" role="status">{hint}</p>
-      <div className="modal-actions trade-modal-actions">
-        <Button type="button" disabled={!bank.payload || busy}
-          aria-description={bank.rate ? `Exchange rate ${bank.rate} to 1` : undefined}
-          onClick={() => submit("bankTrade", bank.payload)}>
-          <Landmark size={17} aria-hidden="true" /> Trade with bank
-          {bank.rate && <small aria-hidden="true">{bank.rate}:1</small>}
-        </Button>
-        <Button type="button" disabled={!complete || !playerTrading || full || busy}
-          onClick={() => submit("offerTrade", { give, want })}>
-          <Users size={17} aria-hidden="true" /> Offer to players
-        </Button>
-      </div>
-    </Modal>
-  );
-}
 function DevelopmentModal({ card, game, onClose, onAction }) {
   const meta = DEV_META[card.type] || DEV_META.knight,
     [resource, setResource] = useState("wood"),
@@ -1688,36 +1642,6 @@ function DevelopmentModal({ card, game, onClose, onAction }) {
     </Modal>
   );
 }
-function DiscardModal({ count, me, onAction }) {
-  const [selection, setSelection] = useState(EMPTY);
-  return (
-    <Modal title="Discard resources" eyebrow="RETURN RESOURCES">
-      <p className="modal-description">
-        You were over the discard threshold. Choose{" "}
-        <strong>{count} resources</strong> to return to the bank before play
-        continues.
-      </p>
-      <ResourcePicker
-        label="discard"
-        values={selection}
-        onChange={setSelection}
-        max={me.resources}
-      />
-      <p className="selection-count">
-        {total(selection)} / {count} selected
-      </p>
-      <Button
-        className="full"
-        disabled={total(selection) !== count}
-        onClick={() => onAction("discard", { resources: selection })}
-      >
-        Return {count} resources
-        <ArrowRight size={16} />
-      </Button>
-    </Modal>
-  );
-}
-
 function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
   const game = lobby.game,
     me = game.players.find((p) => p.id === meId),
@@ -1768,10 +1692,12 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
       ["roll", "action"].includes(game.phase) &&
       !game.developmentPlayed &&
       !game.roadBuildingRemaining;
-  const openTrade = (resource = null) => {
+  const openTrade = () => {
     setMode(null);
-    setTrade({ resource });
+    setTrade(true);
   };
+  const closeTrade = () => setTrade(false);
+  const discardCount = game.phase === "discard" ? game.discardRequired?.[meId] || 0 : 0;
   const afford = (type) =>
       Object.entries(COSTS[type]).every(
         ([r, n]) => (me.resources?.[r] || 0) >= n,
@@ -1789,7 +1715,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
           : game.phase === "roll"
             ? "Roll the dice."
             : game.phase === "discard"
-              ? "Waiting for players to return resources."
+              ? discardCount ? null : "Waiting for players to return resources."
               : game.phase === "robber"
                 ? "Move the robber to a highlighted tile."
                 : game.phase === "steal"
@@ -1797,12 +1723,6 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                   : mode
                     ? `Choose a highlighted ${mode === "road" ? "edge" : "location"} for your ${mode}.`
                     : "Trade or build, then end your turn.";
-  const overDiscardLimit = me.resourceCount > game.settings.discardThreshold;
-  const dealtResources = { ...me.resources };
-  for (const id of deals.pending.keys()) {
-    const [type, index] = id.split(":");
-    if (index !== undefined) dealtResources[type]--;
-  }
   const dealtDevelopment = me.development?.filter(card => !deals.pending.has(card.id)) || [];
   const offered = game.tradeOffers?.[0] ?? game.tradeOffer,
     offerOwner = game.players.find((p) => p.id === offered?.from),
@@ -2065,8 +1985,9 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                   <Button
                     variant="outline"
                     disabled={!canAct || !!busy}
-                    aria-haspopup="dialog"
-                    onClick={() => openTrade()}
+                    aria-expanded={!!trade && canAct}
+                    aria-controls={trade && canAct ? "match-trade-tray" : undefined}
+                    onClick={trade ? closeTrade : openTrade}
                   >
                     <Handshake size={17} />
                     Trade
@@ -2087,11 +2008,8 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
               <Handshake size={20} />
               <div>
                 <strong>{offerOwner?.name} offers a trade</strong>
-                <div>
-                  <ResourceSummary resources={offered.give} />
-                  <ArrowRight size={14} />
-                  <ResourceSummary resources={offered.want} />
-                </div>
+                <ResourceOfferCards give={offered.from === meId ? offered.give : offered.want}
+                  get={offered.from === meId ? offered.want : offered.give} resourceTypes={RES} resourceMeta={META} />
               </div>
               {offered.from === meId ? (
                 <Button variant="outline" onClick={() => action("cancelTrade", { offerId: offered.id })}>
@@ -2113,38 +2031,10 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
             </div>
           )}
           <section className="hand-section">
-            <div className="hand-label">
-              <span className="eyebrow">RESOURCES</span>
-              <span>
-                {me.resourceCount} resource{me.resourceCount === 1 ? "" : "s"}
-                <LockKeyhole size={11} />
-                  {overDiscardLimit && <span className="deal-risk-label">Over discard limit</span>}
-              </span>
-            </div>
-            <div className="hand-cards" data-deal-hand="resource" data-discard-risk={overDiscardLimit || undefined}>
-              {RES.map((r) => (
-                <div
-                  key={r}
-                  data-deal-pile={r}
-                  className={`resource-card ${!dealtResources[r] ? "empty" : ""}`}
-                >
-                  <AtlasArt terrain={r} />
-                  <div className="resource-card-name">
-                    <ResourceIcon resource={r} size={14} />
-                    <strong>{META[r].name}</strong>
-                  </div>
-                  <span className="resource-card-count">
-                    {dealtResources[r] || 0}
-                  </span>
-                  {canAct && dealtResources[r] > 0 && (
-                    <button type="button" className="resource-card-trade"
-                      aria-label={"Trade " + META[r].name}
-                      aria-description={dealtResources[r] + " in hand"}
-                      aria-haspopup="dialog" disabled={!!busy}
-                      onClick={() => openTrade(r)} />
-                  )}
-                </div>
-              ))}
+            <ResourceCardDraft game={game} me={me} offers={openTradeOffers(game)} tradeOpen={!!trade && canAct}
+              canTrade={canAct} discardCount={discardCount} busy={!!busy} onOpen={openTrade} onClose={closeTrade}
+              onAction={action} resourceTypes={RES} resourceMeta={META} pending={deals.pending} />
+            <div className="hand-cards">
               <div className="development-hand" data-deal-hand="development">
                 {dealtDevelopment.length ? (
                   dealtDevelopment.map((card) => {
@@ -2230,29 +2120,11 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
           </div>
         </Modal>
       )}
-      {trade && canAct && (
-        <TradeModal
-          game={game}
-          me={me}
-          busy={!!busy}
-          initialResource={trade.resource}
-          onClose={() => setTrade(null)}
-          onAction={action}
-        />
-      )}
       {dev && (
         <DevelopmentModal
           card={dev}
           game={game}
           onClose={() => setDev(null)}
-          onAction={action}
-        />
-      )}
-      {game.phase === "discard" && game.discardRequired?.[meId] > 0 && (
-        <DiscardModal
-          key={`${game.turn}-${game.discardRequired[meId]}`}
-          count={game.discardRequired[meId]}
-          me={me}
           onAction={action}
         />
       )}
