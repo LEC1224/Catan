@@ -56,6 +56,7 @@ import { Sheep } from "./sheep-icon.js";
 import { resourceName } from "../shared/resource-names.js";
 import { gameLogText } from "./game-log-text.js";
 import "./styles.css";
+import "./match-framing.css";
 import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
 import { useRollReminder } from "./roll-reminder.js";
 import { MatchResults } from "./match-results.jsx";
@@ -1918,163 +1919,165 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
               </span>
             </div>
           </div>
-          <div className="action-bar">
-            <div className="dice-group">
-              <Dice value={game.dice?.[0]} />
-              <Dice value={game.dice?.[1]} />
-              {game.dice && (
-                <span className="dice-total">
-                  {game.dice[0] + game.dice[1]}
-                </span>
-              )}
-            </div>
-            <div className="build-actions">
-              {[
-                ["road", Route, "Road"],
-                ["settlement", Home, "Settlement"],
-                ["city", Building2, "City"],
-              ].map(([type, Icon, label]) => (
+          <div className="match-dock">
+            <div className="action-bar">
+              <div className="dice-group">
+                <Dice value={game.dice?.[0]} />
+                <Dice value={game.dice?.[1]} />
+                {game.dice && (
+                  <span className="dice-total">
+                    {game.dice[0] + game.dice[1]}
+                  </span>
+                )}
+              </div>
+              <div className="build-actions">
+                {[
+                  ["road", Route, "Road"],
+                  ["settlement", Home, "Settlement"],
+                  ["city", Building2, "City"],
+                ].map(([type, Icon, label]) => (
+                  <button
+                    key={type}
+                    className={`build-action ${mode === type ? "selected" : ""}`}
+                    disabled={
+                      !canAct ||
+                      !afford(type) ||
+                      !(type === "road"
+                        ? me.roadsLeft
+                        : type === "settlement"
+                          ? me.settlementsLeft
+                          : me.citiesLeft)
+                    }
+                    onClick={() => setMode(mode === type ? null : type)}
+                  >
+                    <Icon size={18} />
+                    <span>
+                      {label}
+                      <Cost cost={COSTS[type]} />
+                    </span>
+                  </button>
+                ))}
                 <button
-                  key={type}
-                  className={`build-action ${mode === type ? "selected" : ""}`}
+                  className="build-action"
                   disabled={
                     !canAct ||
-                    !afford(type) ||
-                    !(type === "road"
-                      ? me.roadsLeft
-                      : type === "settlement"
-                        ? me.settlementsLeft
-                        : me.citiesLeft)
+                    !afford("development") ||
+                    !game.developmentRemaining
                   }
-                  onClick={() => setMode(mode === type ? null : type)}
+                  onClick={() => action("buyDevelopment")}
                 >
-                  <Icon size={18} />
+                  <ScrollText size={18} />
                   <span>
-                    {label}
-                    <Cost cost={COSTS[type]} />
+                    Develop
+                    <Cost cost={COSTS.development} />
                   </span>
                 </button>
-              ))}
-              <button
-                className="build-action"
-                disabled={
-                  !canAct ||
-                  !afford("development") ||
-                  !game.developmentRemaining
-                }
-                onClick={() => action("buyDevelopment")}
-              >
-                <ScrollText size={18} />
-                <span>
-                  Develop
-                  <Cost cost={COSTS.development} />
-                </span>
-              </button>
-            </div>
-            <div className="turn-actions">
-              {myTurn && game.phase === "roll" ? (
-                <Button
-                  className="roll-reminder"
-                  data-roll-reminder={remindRoll || undefined}
-                  onClick={() => action("rollDice")}
-                  disabled={!!busy || game.roadBuildingRemaining > 0}
-                >
-                  <Dices size={17} />
-                  Roll dice
-                </Button>
-              ) : (
-                <>
-                  <Button
-                    variant="outline"
-                    disabled={!canAct || !!busy}
-                    aria-expanded={!!trade && canAct}
-                    aria-controls={trade && canAct ? "match-trade-tray" : undefined}
-                    onClick={trade ? closeTrade : openTrade}
-                  >
-                    <Handshake size={17} />
-                    Trade
-                  </Button>
-                  <Button
-                    disabled={!canAct || !!busy}
-                    onClick={() => action("endTurn")}
-                  >
-                    End turn
-                    <ArrowRight size={16} />
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-          {offered && (
-            <div className="trade-offer">
-              <Handshake size={20} />
-              <div>
-                <strong>{offerOwner?.name} offers a trade</strong>
-                <ResourceOfferCards give={offered.from === meId ? offered.give : offered.want}
-                  get={offered.from === meId ? offered.want : offered.give} resourceTypes={RES} resourceMeta={META} />
               </div>
-              {offered.from === meId ? (
-                <Button variant="outline" onClick={() => action("cancelTrade", { offerId: offered.id })}>
-                  Cancel offer
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" disabled={!!busy} onClick={() => action("declineTrade", { offerId: offered.id })}>
-                    Decline
-                  </Button>
+              <div className="turn-actions">
+                {myTurn && game.phase === "roll" ? (
                   <Button
-                    disabled={!canAccept || !!busy}
-                    onClick={() => action("acceptTrade", { offerId: offered.id })}
+                    className="roll-reminder"
+                    data-roll-reminder={remindRoll || undefined}
+                    onClick={() => action("rollDice")}
+                    disabled={!!busy || game.roadBuildingRemaining > 0}
                   >
-                    Accept trade
+                    <Dices size={17} />
+                    Roll dice
                   </Button>
-                </>
-              )}
-            </div>
-          )}
-          <section className="hand-section">
-            <ResourceCardDraft game={game} me={me} offers={openTradeOffers(game)} tradeOpen={!!trade && canAct}
-              canTrade={canAct} discardCount={discardCount} busy={!!busy} onOpen={openTrade} onClose={closeTrade}
-              onAction={action} resourceTypes={RES} resourceMeta={META} pending={deals.pending} />
-            <div className="hand-cards">
-              <div className="development-hand" data-deal-hand="development">
-                {dealtDevelopment.length ? (
-                  dealtDevelopment.map((card) => {
-                    const meta = DEV_META[card.type] || DEV_META.knight,
-                      Icon = meta.icon,
-                      available =
-                        card.type === "victoryPoint" ||
-                        (canDev && card.turnBought !== game.turn);
-                    return (
-                      <button
-                        key={card.id}
-                        data-deal-card={card.id}
-                        className={`development-card ${card.type === "victoryPoint" ? "victory" : ""}`}
-                        disabled={!available}
-                        onClick={() => setDev(card)}
-                        title={`${meta.name}${card.turnBought === game.turn ? " — available next turn" : ""}`}
-                      >
-                        <Icon size={23} strokeWidth={1.3} />
-                        <strong>{meta.name}</strong>
-                        <small>
-                          {card.type === "victoryPoint"
-                            ? "+1 hidden VP"
-                            : card.turnBought === game.turn
-                              ? "Next turn"
-                              : "Development"}
-                        </small>
-                      </button>
-                    );
-                  })
                 ) : (
-                  <div className="empty-development">
-                    <ScrollText size={23} strokeWidth={1.2} />
-                    <span>No development cards</span>
-                  </div>
+                  <>
+                    <Button
+                      variant="outline"
+                      disabled={!canAct || !!busy}
+                      aria-expanded={!!trade && canAct}
+                      aria-controls={trade && canAct ? "match-trade-tray" : undefined}
+                      onClick={trade ? closeTrade : openTrade}
+                    >
+                      <Handshake size={17} />
+                      Trade
+                    </Button>
+                    <Button
+                      disabled={!canAct || !!busy}
+                      onClick={() => action("endTurn")}
+                    >
+                      End turn
+                      <ArrowRight size={16} />
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
-          </section>
+            {offered && (
+              <div className="trade-offer">
+                <Handshake size={20} />
+                <div>
+                  <strong>{offerOwner?.name} offers a trade</strong>
+                  <ResourceOfferCards give={offered.from === meId ? offered.give : offered.want}
+                    get={offered.from === meId ? offered.want : offered.give} resourceTypes={RES} resourceMeta={META} />
+                </div>
+                {offered.from === meId ? (
+                  <Button variant="outline" onClick={() => action("cancelTrade", { offerId: offered.id })}>
+                    Cancel offer
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" disabled={!!busy} onClick={() => action("declineTrade", { offerId: offered.id })}>
+                      Decline
+                    </Button>
+                    <Button
+                      disabled={!canAccept || !!busy}
+                      onClick={() => action("acceptTrade", { offerId: offered.id })}
+                    >
+                      Accept trade
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+            <section className="hand-section">
+              <ResourceCardDraft game={game} me={me} offers={openTradeOffers(game)} tradeOpen={!!trade && canAct}
+                canTrade={canAct} discardCount={discardCount} busy={!!busy} onOpen={openTrade} onClose={closeTrade}
+                onAction={action} resourceTypes={RES} resourceMeta={META} pending={deals.pending} />
+              <div className="hand-cards">
+                <div className="development-hand" data-deal-hand="development">
+                  {dealtDevelopment.length ? (
+                    dealtDevelopment.map((card) => {
+                      const meta = DEV_META[card.type] || DEV_META.knight,
+                        Icon = meta.icon,
+                        available =
+                          card.type === "victoryPoint" ||
+                          (canDev && card.turnBought !== game.turn);
+                      return (
+                        <button
+                          key={card.id}
+                          data-deal-card={card.id}
+                          className={`development-card ${card.type === "victoryPoint" ? "victory" : ""}`}
+                          disabled={!available}
+                          onClick={() => setDev(card)}
+                          title={`${meta.name}${card.turnBought === game.turn ? " — available next turn" : ""}`}
+                        >
+                          <Icon size={23} strokeWidth={1.3} />
+                          <strong>{meta.name}</strong>
+                          <small>
+                            {card.type === "victoryPoint"
+                              ? "+1 hidden VP"
+                              : card.turnBought === game.turn
+                                ? "Next turn"
+                                : "Development"}
+                          </small>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="empty-development">
+                      <ScrollText size={23} strokeWidth={1.2} />
+                      <span>No development cards</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
         </section>
         <aside className="game-sidebar">
           <div className="segmented small">

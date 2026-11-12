@@ -1,0 +1,52 @@
+/* Transient prompts sit above the playfield without changing its fit area. */
+.match-dock { position: relative; z-index: 3; }
+.match-dock .draft-panel {
+  position: absolute;
+  z-index: 1;
+  inset: auto 0 calc(100% + 4px);
+  width: min(calc(100% - 16px), 830px);
+  margin: 0 auto;
+}
+.match-dock .draft-trade-panel { width: min(calc(100% - 16px), 960px); }
+
+.match-toolbar .turn-banner, .game-page .turn-banner {
+  position: relative;
+  block-size: 59px;
+}
+.game-page .turn-banner { z-index: 2; }
+.match-toolbar .turn-state strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.turn-banner .robber-friendly-note {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 50%;
+  width: max-content;
+  max-width: min(21rem, calc(100vw - 24px));
+  translate: -50% 0;
+  align-items: center;
+  padding: 5px 8px;
+  border: 1px solid #b497627d;
+  border-radius: 4px;
+  background: #1c332bf5;
+  pointer-events: none;
+}
+.game-page .turn-banner .robber-friendly-note { color: #f2d29b; font-size: 11px; }
+.turn-banner .robber-friendly-note strong {
+  overflow: visible;
+  color: inherit;
+  font: inherit;
+  font-weight: 750;
+  white-space: normal;
+}
+
+.match-shell { position: relative; }
+.match-shell > .connection-banner {
+  position: absolute;
+  z-index: 11;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
