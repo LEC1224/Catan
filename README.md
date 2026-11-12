@@ -22,7 +22,7 @@ npm start
 
 Use `PORT` and `HOST` environment variables to change the port or listening interface. On PowerShell: `$env:PORT = '3001'` then `npm run dev`.
 
-Internet deployment is deliberately not performed. The app uses one origin for HTTP and WebSocket traffic and can later run on a Node host behind an HTTPS reverse proxy with WebSocket support. Share that public origin's invite links when hosted. No email/password setup is needed for players.
+Play online at [catan.lecani.se](https://catan.lecani.se). Use that address for public invite links. See [production deployment](deploy/README.md) for server setup and updates.
 
 ## Playing
 
