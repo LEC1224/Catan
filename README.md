@@ -1,4 +1,4 @@
-# Catan Tides
+# LeCataNi
 
 A standalone, real-time multiplayer Catan proof of concept. React renders the client; a Node/Express and Socket.IO server owns the rules, random outcomes, lobby membership and private information. No accounts, ChatGPT integration or external database are required.
 

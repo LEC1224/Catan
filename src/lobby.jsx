@@ -32,7 +32,7 @@ export function LobbyHeader({ connected, inLobby, leaving, onLeave, onHelp }) {
       <div className="front-header-inner">
         <div className="front-brand">
           <Crest />
-          <strong>Catan</strong>
+          <strong>LeCataNi</strong>
         </div>
         <div className="front-header-actions">
           <span className={`front-online ${connected ? "" : "offline"}`}>

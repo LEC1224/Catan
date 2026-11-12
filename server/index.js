@@ -105,7 +105,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     else { if (lobby.hostId === playerId) lobby.hostId = (lobby.players.find(p => !p.isBot && p.connected) || lobby.players.find(p => !p.isBot)).id; emitLobby(lobby); }
     dirty = true; broadcastDirectory();
   }
-  app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'Catan Tides', lobbies: lobbies.size }));
+  app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'LeCataNi', lobbies: lobbies.size }));
   app.get('/api/lobbies', (_req, res) => res.json(directory()));
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
@@ -255,6 +255,6 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const server = await createAppServer({ port: Number(process.env.PORT) || 3000, host: process.env.HOST || '0.0.0.0', production: process.argv.includes('--production') });
-  console.log(`\n  CATAN TIDES · http://localhost:${server.port}\n  Standalone multiplayer server is ready.\n`);
+  console.log(`\n  LeCataNi · http://localhost:${server.port}\n  Standalone multiplayer server is ready.\n`);
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await server.close(); process.exit(0); });
 }

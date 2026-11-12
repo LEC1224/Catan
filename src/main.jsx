@@ -107,7 +107,7 @@ function Brand({ compact = false }) {
         <Compass size={30} strokeWidth={1.3} />
       </span>
       <span>
-        <strong>CATAN</strong>
+        <strong>LeCataNi</strong>
       </span>
     </div>
   );
@@ -307,7 +307,7 @@ function App() {
             e.preventDefault();
             if (!lobby) history.replaceState({}, "", "/");
           }}
-          aria-label="Catan home"
+          aria-label="LeCataNi home"
         >
           <Brand compact={!!lobby?.game} />
         </a>
@@ -445,7 +445,7 @@ function HomeScreen({ name, setName, directory, command, busy, connected }) {
     <main className="home-page">
       <section className="intro-line">
         <div>
-          <h1>Catan</h1>
+          <h1>LeCataNi</h1>
           <p>Online game for 2–6 players.</p>
         </div>
       </section>
