@@ -56,6 +56,7 @@ import {
 import { Sheep } from "./sheep-icon.js";
 import "./styles.css";
 import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
+import { useRollReminder } from "./roll-reminder.js";
 import { MatchResults } from "./match-results.jsx";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
@@ -1730,6 +1731,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
     [sidebar, setSidebar] = useState("activity"),
     [now, setNow] = useState(Date.now());
   const matchPage = useRef(null);
+  const remindRoll = useRollReminder(myTurn && game.phase === "roll" && !game.roadBuildingRemaining && !busy);
   const deals = useCardDeals({ matchId: lobby.matchId || lobby.id, stream: lobby.cardDealStream,
     game, me: game.phase === "finished" ? null : me });
   useEffect(() => {
@@ -2050,6 +2052,8 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
             <div className="turn-actions">
               {myTurn && game.phase === "roll" ? (
                 <Button
+                  className="roll-reminder"
+                  data-roll-reminder={remindRoll || undefined}
                   onClick={() => action("rollDice")}
                   disabled={!!busy || game.roadBuildingRemaining > 0}
                 >
