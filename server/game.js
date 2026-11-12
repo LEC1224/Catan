@@ -1,6 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { resourceName } from '../shared/resource-names.js';
-import { bankTradeRate, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from '../shared/trades.js';
+import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from '../shared/trades.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
@@ -368,15 +368,17 @@ function applyAction(g, id, type, payload, moves) {
     case 'endTurn': requireThat(g.phase === 'action', 'Finish the current decision before ending your turn.'); nextTurn(g); break;
     case 'bankTrade': {
       requireThat(g.phase === 'action', 'Trade during your action phase.');
-      const { give, receive } = payload, amount = payload.amount ?? 1;
-      requireThat(RESOURCES.includes(give) && RESOURCES.includes(receive) && give !== receive, 'Choose two different resources.');
-      requireThat(Number.isInteger(amount) && amount >= 1 && amount <= 24, 'Choose a valid trade quantity.');
-      const ratio = bankTradeRate(g.board.vertices, id, give);
-      requireThat(g.bank[receive] >= amount, `The supply does not have enough ${resourceName(receive)}.`);
-      const given = { [give]: ratio * amount }, received = { [receive]: amount };
-      pay(g, p, given, moves); grant(g, p, received);
+      const { give, receive } = payload;
+      requireThat(RESOURCES.includes(give), 'Choose a resource to give.');
+      const received = resourceMap(typeof receive === 'string' ? { [receive]: payload.amount ?? 1 } : receive, { nonzero: true });
+      const amount = sum(received);
+      requireThat(!received[give], 'Choose different resources to give and receive.');
+      requireThat(amount <= MAX_BANK_TRADE_CARDS, 'Choose a valid trade quantity.');
+      const cost = bankTradeRate(g.board.vertices, id, give) * amount;
+      pay(g, p, { [give]: cost }, moves); grant(g, p, received);
       moveResources(moves, bank, playerHand(id), received);
-      addLog(g, `${p.name} exchanged ${ratio * amount} ${resourceName(give)} for ${amount} ${resourceName(receive)}.`); break;
+      const receivedText = RESOURCES.filter(r => received[r] > 0).map(r => `${received[r]} ${resourceName(r)}`).join(', ');
+      addLog(g, `${p.name} exchanged ${cost} ${resourceName(give)} for ${receivedText}.`); break;
     }
     case 'offerTrade': {
       requireThat(playerTradesAvailable(g), 'Player trading is not available now.');

@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame, action, viewGame, tick, RESOURCES } from '../server/game.js';
-import { MAX_TRADE_OFFERS } from '../shared/trades.js';
+import { resourceName } from '../shared/resource-names.js';
+import { bankTradeRate, MAX_TRADE_OFFERS } from '../shared/trades.js';
+import { bankTradeDraft } from '../src/trade-draft.js';
 
 const players = n => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `Player ${i}`, color: ['#a44', '#4a4', '#44a', '#aa4', '#a4a', '#4aa'][i] }));
 const make = (n = 3, settings = {}) => createGame(players(n), { seed: 'engine-test', turnSeconds: 120, ...settings });
@@ -167,7 +169,7 @@ test('building roads and cities charges resources, upgrades return settlement pi
   conservation(g);
 });
 
-test('bank trading observes ports and refuses mixed/invalid or unavailable exchanges', () => {
+test('single-resource bank trades use the best port rate and require the cards', () => {
   const g = ready(), p = g.players[0]; give(g, 'p0', 'wood', 10);
   for (const v of g.board.vertices) if (v.building?.owner === 'p0') v.port = null;
   action(g, 'p0', 'bankTrade', { give: 'wood', receive: 'ore' }); assert.equal(g.players[0].resources.wood, 6);
@@ -177,6 +179,45 @@ test('bank trading observes ports and refuses mixed/invalid or unavailable excha
   action(g, 'p0', 'bankTrade', { give: 'wood', receive: 'ore' }); assert.equal(g.players[0].resources.wood, 1);
   const before = structuredClone(g); assert.throws(() => action(g, 'p0', 'bankTrade', { give: 'wood', receive: 'ore' })); assert.deepEqual(g, before);
   conservation(g);
+});
+
+test('the trade draft can buy one brick and one wood with four wool at a wool port', () => {
+  const g = ready(), id = g.activePlayerId;
+  g.board.vertices.find(v => v.building?.owner === id).port = 'wool';
+  give(g, id, 'wool', 4);
+  give(g, id, 'wood', 0);
+  give(g, id, 'brick', 0);
+  const view = viewGame(g, id);
+  const draft = bankTradeDraft({ wool: 4 }, { brick: 1, wood: 1 }, view.bank,
+    type => bankTradeRate(view.board.vertices, id, type), resourceName);
+  assert.equal(draft.rate, 2);
+  assert.ok(draft.payload, draft.hint);
+
+  action(g, id, 'bankTrade', draft.payload);
+  const { wool, wood, brick } = g.players[0].resources;
+  assert.deepEqual({ wool, wood, brick }, { wool: 0, wood: 1, brick: 1 });
+  const deal = viewGame(g, id).cardDeals.at(-1);
+  assert.equal(deal.action, 'bankTrade');
+  assert.deepEqual(Object.fromEntries(deal.moves.map(({ type, count, to }) => [type, to.kind === 'bank' ? -count : count])),
+    { wool: -4, wood: 1, brick: 1 });
+  conservation(g);
+});
+
+test('a bank trade for several resources fails in full if the rate or supply does not allow it', () => {
+  const g = ready(), id = g.activePlayerId;
+  const settlements = g.board.vertices.filter(v => v.building?.owner === id);
+  for (const v of settlements) v.port = null;
+  give(g, id, 'wool', 4);
+  const trade = { give: 'wool', receive: { wood: 1, brick: 1 } };
+  let before = structuredClone(g);
+  assert.throws(() => action(g, id, 'bankTrade', trade), /enough resources/);
+  assert.deepEqual(g, before);
+
+  settlements[0].port = 'wool';
+  give(g, 'p1', 'brick', g.players[1].resources.brick + g.bank.brick);
+  before = structuredClone(g);
+  assert.throws(() => action(g, id, 'bankTrade', trade), /enough brick/);
+  assert.deepEqual(g, before);
 });
 
 test('player trades are atomic, cannot be gifts, and require active player offers', () => {

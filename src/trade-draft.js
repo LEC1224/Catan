@@ -1,3 +1,5 @@
+import { MAX_BANK_TRADE_CARDS } from "../shared/trades.js";
+
 export function bankTradeDraft(give, want, stock, rateFor, nameOf) {
   const offered = Object.entries(give).filter(([, quantity]) => quantity > 0);
   const requested = Object.entries(want).filter(([, quantity]) => quantity > 0);
@@ -5,17 +7,24 @@ export function bankTradeDraft(give, want, stock, rateFor, nameOf) {
   const rate = offered.length === 1 ? rateFor(resource) : null;
   if (!offered.length || !requested.length) return { rate };
 
-  const [receive, amount] = requested[0];
-  if (offered.length !== 1 || requested.length !== 1 || resource === receive) {
-    return { rate, hint: "The bank trades one resource type for a different type." };
+  if (offered.length !== 1) {
+    return { rate, hint: "Give one resource type at a time to the bank." };
   }
-  const available = stock[receive] ?? 0;
-  if (amount > available) {
-    return { rate, hint: `The bank has ${available} ${nameOf(receive)} left.` };
+  if (requested.some(([type]) => type === resource)) {
+    return { rate, hint: "Choose different resources to give and receive." };
   }
-  if (amount > 24) return { rate, hint: "The bank can trade up to 24 cards at a time." };
-  if (count !== rate * amount) {
-    return { rate, hint: `Bank: ${amount} ${nameOf(receive)} for ${rate * amount} ${nameOf(resource)}.` };
+  for (const [type, quantity] of requested) {
+    const available = stock[type] ?? 0;
+    if (quantity > available) return { rate, hint: `The bank has ${available} ${nameOf(type)} left.` };
   }
-  return { rate, payload: { give: resource, receive, amount } };
+  const amount = requested.reduce((total, [, quantity]) => total + quantity, 0);
+  if (amount > MAX_BANK_TRADE_CARDS) return { rate, hint: `The bank can trade up to ${MAX_BANK_TRADE_CARDS} cards at a time.` };
+  const cost = rate * amount;
+  if (count !== cost) {
+    return { rate, hint: `Give ${cost} ${nameOf(resource)} for ${amount} ${amount === 1 ? "card" : "cards"} from the bank.` };
+  }
+  const payload = requested.length === 1
+    ? { give: resource, receive: requested[0][0], amount }
+    : { give: resource, receive: Object.fromEntries(requested) };
+  return { rate, payload };
 }

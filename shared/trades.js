@@ -1,4 +1,5 @@
 export const MAX_TRADE_OFFERS = 6;
+export const MAX_BANK_TRADE_CARDS = 24;
 
 // Older saved games had one offer. The next successful action saves it in the new list.
 export const openTradeOffers = (game) => game.tradeOffers ?? (game.tradeOffer ? [game.tradeOffer] : []);
