@@ -1,0 +1,86 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { io } from 'socket.io-client';
+import { createAppServer, validateSettings } from '../server/index.js';
+
+const call = (client, event, payload = {}) => new Promise((resolve, reject) => client.timeout(3000).emit(event, payload, (error, result) => error ? reject(error) : resolve(result)));
+async function connect(port, token = randomUUID()) {
+  const socket = io(`http://127.0.0.1:${port}`, { auth: { token }, transports: ['websocket'], forceNew: true });
+  socket.on('lobby', lobby => { socket.lobby = lobby; });
+  const identity = await new Promise((resolve, reject) => { socket.once('session', resolve); socket.once('connect_error', reject); });
+  socket.playerId = identity.playerId; socket.token = token;
+  return socket;
+}
+
+test('settings validate values and automatically select the expansion', () => {
+  assert.equal(validateSettings({ maxPlayers: 6 }).extendedBoard, true);
+  assert.equal(validateSettings({ maxPlayers: 6, extendedBoard: false }).extendedBoard, false);
+  assert.throws(() => validateSettings({ maxPlayers: 7 }));
+  assert.throws(() => validateSettings({ turnSeconds: 5 }));
+  assert.throws(() => validateSettings({ discardThreshold: '12' }));
+  assert.throws(() => validateSettings({ extendedBoard: 'false' }));
+});
+
+test('real multiplayer server: lobby privacy, authority, readiness, masked state and reconnect', async t => {
+  const server = await createAppServer({ port: 0, testMode: true, persistence: false });
+  const clients = [];
+  t.after(async () => { clients.forEach(c => c.disconnect()); await server.close(); });
+  const a = await connect(server.port), b = await connect(server.port), c = await connect(server.port);
+  clients.push(a, b, c);
+  assert.equal((await call(a, 'createLobby', { playerName: 'Ada', name: 'North coast', settings: { turnSeconds: 0 } })).ok, true);
+  const id = a.lobby.id;
+  let listings = await (await fetch(`http://127.0.0.1:${server.port}/api/lobbies`)).json();
+  assert.equal(listings.length, 1);
+  assert.equal((await call(b, 'joinLobby', { id, playerName: 'Birch' })).ok, true);
+  assert.equal((await call(b, 'configureLobby', { settings: { victoryPoints: 4 } })).ok, false);
+  assert.equal((await call(a, 'startGame')).ok, false, 'cannot start with an unready guest');
+  assert.equal((await call(a, 'configureLobby', { isPrivate: true, settings: { maxPlayers: 6, extendedBoard: false } })).ok, true);
+  listings = await (await fetch(`http://127.0.0.1:${server.port}/api/lobbies`)).json();
+  assert.equal(listings.length, 0, 'private lobbies never appear in directory');
+  assert.equal((await call(c, 'joinLobby', { id, playerName: 'Ada' })).ok, false, 'duplicate names rejected');
+  assert.equal((await call(c, 'joinLobby', { id, playerName: 'Cedar' })).ok, true, 'private room accepts invite code');
+  assert.equal((await call(a, 'kickPlayer', { playerId: c.playerId })).ok, true);
+  assert.equal(c.lobby, null);
+  assert.equal((await call(b, 'setReady', { ready: true })).ok, true);
+  assert.equal((await call(a, 'startGame')).ok, true);
+  assert.equal(a.lobby.game.board.hexes.length, 19, 'small board override respected');
+  for (const p of a.lobby.game.players) assert.equal(p.resources === null, p.id !== a.playerId);
+  const before = JSON.stringify(server.lobbies.get(id).game);
+  assert.equal((await call(b, 'gameAction', { type: 'placeSettlement', vertexId: 'not-a-real-vertex' })).ok, false);
+  assert.equal(JSON.stringify(server.lobbies.get(id).game), before, 'invalid action has no partial mutations');
+  assert.equal((await call(b, 'leaveLobby')).ok, false, 'active match preserves seats');
+  const reconnectToken = b.token; const identity = b.playerId; b.disconnect();
+  const resumed = await connect(server.port, reconnectToken); clients.push(resumed);
+  // session event precedes lobby snapshot; request a directory round trip to flush events.
+  await call(resumed, 'getDirectory');
+  assert.equal(resumed.playerId, identity);
+  assert.equal(resumed.lobby.id, id);
+  assert.equal(resumed.lobby.status, 'playing');
+  assert.equal((await call(a, 'chat', { text: '<script>alert(1)</script>' })).ok, true);
+  assert.equal(a.lobby.messages.at(-1).text, '<script>alert(1)</script>', 'text is data for React escaping');
+});
+
+test('six clients can join, ready, start an expanded match and synchronize initial placements', async t => {
+  const server = await createAppServer({ port: 0, testMode: true, persistence: false });
+  const clients = [];
+  t.after(async () => { clients.forEach(c => c.disconnect()); await server.close(); });
+  for (let i = 0; i < 6; i++) clients.push(await connect(server.port));
+  const host = clients[0];
+  await call(host, 'createLobby', { playerName: 'Player 1', settings: { maxPlayers: 6, turnSeconds: 0 } });
+  for (let i = 1; i < 6; i++) { assert.equal((await call(clients[i], 'joinLobby', { id: host.lobby.id, playerName: `Player ${i + 1}` })).ok, true); await call(clients[i], 'setReady', { ready: true }); }
+  assert.equal((await call(host, 'startGame')).ok, true);
+  assert.equal(host.lobby.game.board.hexes.length, 30);
+  let placements = 0;
+  while (server.lobbies.get(host.lobby.id).game.phase.startsWith('setup')) {
+    const current = server.lobbies.get(host.lobby.id).game;
+    const actor = clients.find(c => c.playerId === current.activePlayerId);
+    await call(actor, 'getDirectory');
+    const g = actor.lobby.game;
+    const payload = g.phase === 'setupSettlement' ? { type: 'placeSettlement', vertexId: g.legal.settlements[0] } : { type: 'placeRoad', edgeId: g.legal.roads[0] };
+    const result = await call(actor, 'gameAction', payload); assert.equal(result.ok, true, result.error);
+    assert.ok(++placements <= 24);
+  }
+  assert.equal(placements, 24);
+  for (const client of clients) { await call(client, 'getDirectory'); assert.equal(client.lobby.game.phase, 'roll'); }
+});
