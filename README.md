@@ -32,7 +32,7 @@ Click highlighted board corners and edges during setup. In normal turns roll, tr
 
 Refresh or reconnect using the same browser to reclaim your seat. The anonymous browser token is the seat credential; clearing browser storage loses automatic access. Separate browser profiles/private sessions are needed to simulate multiple people on one machine. Multiple tabs in one browser normally represent the same player.
 
-After a win, inspect the point breakdown, score timeline, and key moments. **Replay** opens a shared board with step controls and lobby chat. Any seated player can move the cursor, including by selecting a key moment. **Results** returns only your screen to the summary; **Join replay** catches you up to the room. Review ends when the host returns the room to the lobby. Games started before recording may only have part of their history.
+After a win, inspect the point breakdown, score timeline, and key moments. **Replay** opens a shared board with a timeline of turns, actions, and key moments. Click a turn or key moment to jump to it, or drag through the actions to preview moves on your board. When you release, the shared replay jumps to that step. **Results** returns only your screen to the summary; **Join replay** catches you up to the room. Review ends when the host returns the room to the lobby. Games started before recording may only have part of their history.
 
 ## Settings and variants
 

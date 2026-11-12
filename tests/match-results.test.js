@@ -120,7 +120,9 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   assert.ok((await rpc(host, 'startGame')).ok);
   const lobby = server.lobbies.get(id);
   const seek = (client, step, matchId = lobby.matchId) => rpc(client, 'seekReplay', { matchId, step });
+  const loadRecording = (client, matchId = lobby.matchId) => rpc(client, 'getReplayRecording', { matchId });
   assert.equal((await seek(guest, 0)).ok, false, 'live games cannot be replayed');
+  assert.equal((await loadRecording(guest)).ok, false, 'live recordings are private');
   assert.equal(host.lobby.replay, null);
   assert.equal(lobby.recording.frames.length, 1);
   const currentClient = () => clients.find(client => client.playerId === lobby.game.activePlayerId);
@@ -140,6 +142,7 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   lobby.game.phase = 'action';
   const player = lobby.game.players.find(p => p.id === winner.playerId);
   Object.assign(player.resources, { wheat: 2, ore: 3 });
+  player.development.push({ id: 'private-replay-card', type: 'knight', turnBought: 0 });
   const { cities } = viewGame(lobby.game, player.id).legal;
   assert.ok((await rpc(winner, 'gameAction', { type: 'upgradeCity', vertexId: cities[0] })).ok);
   await rpc(guest, 'getDirectory');
@@ -148,6 +151,16 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   assert.equal(guest.lobby.summary.frameCount, 10);
   assert.equal(guest.lobby.summary.scores.find(s => s.id === winner.playerId).total, 3);
   const lastStep = guest.lobby.summary.frameCount - 1;
+  assert.equal((await loadRecording(outsider)).ok, false);
+  assert.equal((await loadRecording(guest, 'previous-match')).ok, false);
+  const loaded = await loadRecording(guest);
+  assert.ok(loaded.ok);
+  const { frames, positions } = loaded.recording;
+  assert.equal(frames.length, lastStep + 1);
+  assert.deepEqual(frames.slice(0, 3).map(frame => frame.move.type), ['start', 'placeSettlement', 'placeRoad']);
+  assert.ok(frames.every(frame => positions[frame.position]), 'every preview references a recorded position');
+  assert.equal(JSON.stringify(loaded.recording).includes('private-replay-card'), false);
+  assert.equal(guest.lobby.replay, null, 'loading the timeline does not open or seek replay');
   assert.equal((await seek(guest, 0, 'previous-match')).ok, false);
   assert.equal((await seek(outsider, 0)).ok, false);
   assert.equal((await seek(guest, lastStep + 1)).ok, false);
@@ -167,6 +180,7 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   };
   await seekBoth(host, 2);
   const earlyBoard = replayBoard(host.lobby.game.board, host.lobby.replay.position);
+  assert.deepEqual(replayBoard(host.lobby.game.board, positions[frames[2].position]), earlyBoard);
   assert.equal(earlyBoard.hexes.length, 30);
   assert.equal(earlyBoard.vertices.filter(v => v.building?.type === 'settlement').length, 1);
   assert.equal(earlyBoard.edges.filter(e => e.owner).length, 1);
@@ -189,6 +203,7 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   await rpc(returningGuest, 'getDirectory');
   assert.deepEqual(returningGuest.lobby.replay, savedCursor);
   assert.equal(returningHost.lobby.summary.frameCount, lastStep + 1);
+  assert.deepEqual((await loadRecording(returningGuest)).recording, loaded.recording);
   assert.ok((await rpc(returningHost, 'returnToLobby')).ok);
   assert.equal(returningHost.lobby.summary, null);
   assert.equal(returningHost.lobby.replay, null);

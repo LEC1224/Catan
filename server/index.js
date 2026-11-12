@@ -222,10 +222,18 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     });
     on('kickPlayer', payload => { const lobby = getLobby(playerId); requireHost(lobby, playerId); waiting(lobby); if (payload.playerId === playerId) throw Error('Use Leave lobby instead.'); if (!lobby.players.some(p => p.id === payload.playerId)) throw Error('Player not found.'); releasePlayer(lobby, payload.playerId, true); });
     on('transferHost', payload => { const lobby = getLobby(playerId); requireHost(lobby, playerId); const next = lobby.players.find(p => p.id === payload.playerId && !p.isBot && p.connected); if (!next) throw Error('Choose a connected human player.'); lobby.hostId = next.id; next.ready = true; emitLobby(lobby); broadcastDirectory(); });
-    on('seekReplay', ({ matchId, step }) => {
+    function replayableLobby(matchId) {
       const lobby = getLobby(playerId);
       if (lobby.status !== 'finished' || !matchId || matchId !== lobby.matchId) throw Error('This match is not available to replay.');
       if (!hasRecording(lobby.recording)) throw Error('This match has no recorded moves.');
+      return lobby;
+    }
+    on('getReplayRecording', ({ matchId }) => {
+      const { frames, positions } = replayableLobby(matchId).recording;
+      return { recording: { frames, positions } };
+    });
+    on('seekReplay', ({ matchId, step }) => {
+      const lobby = replayableLobby(matchId);
       if (!Number.isInteger(step) || step < 0 || step >= lobby.recording.frames.length) throw Error('Choose a recorded move.');
       if (lobby.replay?.step === step) return;
       lobby.replay = { step, playerId };

@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { Building2, ChartNoAxesCombined, ChevronRight, Copy, Film, Flag, House, LogOut, RotateCcw, Route, ScrollText, Shield, Trophy } from "lucide-react";
-import { PlayerMark, ReplayView, turnLabel } from "./match-replay.jsx";
+import { PlayerMark, ReplayView } from "./match-replay.jsx";
+import { turnLabel } from "./replay-timeline.jsx";
 import "./match-results.css";
 
 const columns = [
@@ -169,16 +170,28 @@ function KeyMoments({ moments, players, onSeek, activeStep, embedded = false }) 
 
 export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite, soundControl, fullscreenControl, Board, resourceMeta }) {
   const [stayOnResults, setStayOnResults] = useState(false);
+  const [recording, setRecording] = useState();
+  const commandRef = useRef(command);
   const page = useRef(null);
-  const { game, summary, replay } = lobby;
+  const { game, summary, replay, matchId } = lobby;
   const winner = game.players.find(p => p.id === game.winnerId);
   const host = lobby.hostId === meId;
   const inReplay = !!replay && !stayOnResults;
   const canReplay = summary?.frameCount > 1;
-  const seek = (step) => command("seekReplay", { matchId: lobby.matchId, step });
+  const seek = (step) => command("seekReplay", { matchId, step });
   const openReplay = async step => {
     if ((step === undefined && replay) || await seek(step ?? 0)) setStayOnResults(false);
   };
+  // A command changes the app's busy state; only entering replay or retrying should start a load.
+  useEffect(() => { commandRef.current = command; }, [command]);
+  useEffect(() => {
+    if (!inReplay || recording !== undefined) return;
+    let active = true;
+    commandRef.current("getReplayRecording", { matchId }).then(result => {
+      if (active) setRecording(result?.recording ?? null);
+    });
+    return () => { active = false; };
+  }, [inReplay, recording, matchId]);
   useEffect(() => {
     if (!page.current) return;
     page.current.scrollTop = 0;
@@ -203,7 +216,8 @@ export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite
       </header>
       {inReplay ? (
         <ReplayView lobby={lobby} command={command} busy={busy} Board={Board} resourceMeta={resourceMeta} onSeek={seek}
-          moments={<KeyMoments moments={summary.moments} players={game.players} onSeek={seek} activeStep={replay.step} embedded />} />
+          recording={recording} onRetry={() => setRecording(undefined)}
+          renderMoments={(step, seekMoment) => <KeyMoments moments={summary.moments} players={game.players} onSeek={seekMoment} activeStep={step} embedded />} />
       ) : <div className="results-content">
         <header className="victory-banner">
           <div className="victory-crest" aria-hidden="true"><Trophy size={42} strokeWidth={1.5} /></div>

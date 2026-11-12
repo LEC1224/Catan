@@ -13,6 +13,7 @@ All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser 
 - `setReady` `{ready}`
 - `startGame` `{}` host only (2+ players, others ready)
 - `gameAction` `{type,...payload}` invokes action(game, playerId,type,payload)
+- `getReplayRecording` `{matchId}` returns `{ok,recording:{frames,positions}}` to seated players after the match finishes. This read does not move the shared cursor.
 - `seekReplay` `{matchId,step}` accepts a zero-based recorded step from any seated player after the match finishes. The resulting `lobby.replay` cursor is shared, including after reconnect or restart.
 - `chat` `{text}` -> broadcast `chatMessage` `{id,name,text,at}`; lobby contains `messages` array
 - `returnToLobby` `{}` host only after finished
@@ -37,7 +38,7 @@ Exports `createGame(players,settings)`, `action(game,playerId,type,payload={})`,
 
 ## Match review
 
-Finished lobby snapshots include `summary: {turns,pairedTurns,frameCount,history,scores,timeline,moments}`. Score samples and moments reference recorded step indices. Starting replay exposes only the currently selected `replay: {step,playerId,frame,position}`. The frame contains dice, robber, active player, points, public inventory counts, and the move description. The position contains building and road tuples to apply to the static board. The full recording is server-side, excluded from live snapshots, and never stores hand contents or card IDs. Older saves can report partial or unavailable history. The host returning to the lobby clears the recording and cursor.
+Finished lobby snapshots include `summary: {turns,pairedTurns,frameCount,history,scores,timeline,moments}`. Score samples and moments reference recorded step indices. Lobby snapshots carry only the currently selected `replay: {step,playerId,frame,position}`. The frame contains dice, robber, active player, points, public inventory counts, and the move description. The position contains building and road tuples to apply to the static board. In the recording fetched by replay clients, each frame's `position` is an index into the shared positions array. Clients use the recording to preview moves locally while dragging and send `seekReplay` when the drag ends. Recordings never contain hand contents or card IDs. Older saves can report partial or unavailable history. The host returning to the lobby clears the recording and cursor.
 
 ## Game state exposed to client
 `phase`: setupSettlement | setupRoad | roll | action | discard | robber | steal | finished.
