@@ -9,6 +9,31 @@
 }
 .match-dock .draft-trade-panel { width: min(calc(100% - 16px), 960px); }
 
+@media (max-width: 620px) and (max-height: 700px) {
+  .match-dock .draft-trade-panel {
+    grid-template-areas: "give get" "actions actions";
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-block-start: 64px;
+  }
+  .draft-trade-panel .draft-close { position: absolute; inset: 5px 5px auto auto; grid-area: auto; }
+  .draft-trade-panel .draft-lane[data-side="get"] .draft-direction { grid-row: 1; }
+  .draft-trade-panel .draft-card-row { --draft-card-width: 34px; }
+  .draft-trade-panel .draft-card-row[data-size="picker"] {
+    position: absolute;
+    inset: 5px 47px auto 5px;
+    grid-area: auto;
+    justify-content: center;
+    padding: 4px;
+    border: 1px solid #7bab947d;
+    border-radius: 4px;
+    background: #1a3128;
+  }
+  .draft-trade-panel .draft-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .draft-trade-panel .draft-status { grid-column: 1 / -1; font-size: 11px; }
+  .draft-trade-panel .draft-command { gap: 4px; min-height: 32px; padding-inline: 5px; font-size: 11px; }
+  .draft-trade-panel .draft-rate { font-size: 11px; }
+}
+
 .match-toolbar .turn-banner, .game-page .turn-banner {
   position: relative;
   block-size: 59px;
