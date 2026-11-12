@@ -2,6 +2,8 @@ import React, { useState, useEffect, useId, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { attachBotController } from "./bots/controller.js";
+import { bankTradeRate, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from "../shared/trades.js";
+import { bankTradeDraft } from "./trade-draft.js";
 import {
   Anchor,
   ArrowRight,
@@ -17,6 +19,7 @@ import {
   Globe2,
   Hammer,
   HelpCircle,
+  Landmark,
   LockKeyhole,
   Map,
   MessageSquare,
@@ -1522,7 +1525,7 @@ function Dice({ value }) {
     </span>
   );
 }
-function ResourcePicker({ values, onChange, max = {}, label }) {
+function ResourcePicker({ values, onChange, max = {}, label, busy = false }) {
   return (
     <div className="resource-picker" aria-label={label}>
       {RES.map((r) => (
@@ -1534,7 +1537,7 @@ function ResourcePicker({ values, onChange, max = {}, label }) {
           <div className="quantity">
             <button
               aria-label={`Remove ${META[r].name} from ${label}`}
-              disabled={!values[r]}
+              disabled={busy || !values[r]}
               onClick={() =>
                 onChange({ ...values, [r]: Math.max(0, (values[r] || 0) - 1) })
               }
@@ -1544,7 +1547,7 @@ function ResourcePicker({ values, onChange, max = {}, label }) {
             <span>{values[r] || 0}</span>
             <button
               aria-label={`Add ${META[r].name} to ${label}`}
-              disabled={values[r] >= (max[r] ?? 99)}
+              disabled={busy || values[r] >= (max[r] ?? 99)}
               onClick={() => onChange({ ...values, [r]: (values[r] || 0) + 1 })}
             >
               <Plus size={13} />
@@ -1567,136 +1570,48 @@ function ResourceSummary({ resources }) {
     </span>
   );
 }
-function TradeModal({ game, me, onClose, onAction }) {
-  const [tab, setTab] = useState("bank"),
-    [give, setGive] = useState("wood"),
-    [receive, setReceive] = useState("wheat"),
-    [offer, setOffer] = useState(EMPTY),
-    [want, setWant] = useState(EMPTY);
-  const ports = game.board.vertices
-      .filter((v) => v.building?.owner === me.id && v.port)
-      .map((v) => v.port),
-    rate = ports.includes(give) ? 2 : ports.includes("any") ? 3 : 4,
-    playerTrading = game.settings.allowPlayerTrading && !game.pairedPlayer;
+function TradeModal({ game, me, busy, initialResource, onClose, onAction }) {
+  const [offer, setOffer] = useState(() => initialResource ? { ...EMPTY(), [initialResource]: 1 } : EMPTY());
+  const [want, setWant] = useState(EMPTY);
+  const give = Object.fromEntries(RES.map((r) => [r, Math.min(offer[r], me.resources?.[r] || 0)]));
+  const giveMax = Object.fromEntries(RES.map((r) => [r, want[r] ? 0 : me.resources?.[r] || 0]));
+  const wantMax = Object.fromEntries(RES.map((r) => [r, give[r] ? 0 : 150]));
+  const bank = bankTradeDraft(give, want, game.bank,
+    (type) => bankTradeRate(game.board.vertices, me.id, type), (type) => META[type].name.toLowerCase());
+  const complete = total(give) > 0 && total(want) > 0 && !RES.some((r) => give[r] && want[r]);
+  const playerTrading = playerTradesAvailable(game);
+  const full = openTradeOffers(game).length >= MAX_TRADE_OFFERS;
+  const hint = complete && playerTrading && full ? "Withdraw an offer to send another." : bank.hint;
+
+  async function submit(type, payload) {
+    if (await onAction(type, payload)) onClose();
+  }
+
   return (
     <Modal title="Trade" onClose={onClose}>
-      <div className="segmented">
-        <button
-          className={tab === "bank" ? "selected" : ""}
-          onClick={() => setTab("bank")}
-        >
-          <Anchor size={16} />
-          Bank & ports
-        </button>
-        <button
-          className={tab === "players" ? "selected" : ""}
-          disabled={!playerTrading}
-          onClick={() => setTab("players")}
-        >
-          <Handshake size={16} />
-          Players
-        </button>
+      <div className="trade-pickers">
+        <div>
+          <h4>You give</h4>
+          <ResourcePicker label="what you give" values={give} max={giveMax} busy={busy} onChange={setOffer} />
+        </div>
+        <div>
+          <h4>You get</h4>
+          <ResourcePicker label="what you get" values={want} max={wantMax} busy={busy} onChange={setWant} />
+        </div>
       </div>
-      {tab === "bank" ? (
-        <>
-          <p className="modal-description">
-            Your best port rate is applied automatically.
-          </p>
-          <div className="bank-exchange">
-            <label className="field-label">
-              You give
-              <select
-                value={give}
-                onChange={(e) => {
-                  setGive(e.target.value);
-                  if (e.target.value === receive)
-                    setReceive(RES.find((r) => r !== e.target.value));
-                }}
-              >
-                {RES.map((r) => (
-                  <option value={r} key={r}>
-                    {META[r].name} ({me.resources?.[r] || 0})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="exchange-rate">
-              <strong>{rate}:1</strong>
-              <ArrowRight size={21} />
-            </div>
-            <label className="field-label">
-              You receive
-              <select
-                value={receive}
-                onChange={(e) => setReceive(e.target.value)}
-              >
-                {RES.filter((r) => r !== give).map((r) => (
-                  <option value={r} key={r}>
-                    {META[r].name} ({game.bank[r]} left)
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="exchange-preview">
-            <ResourceSummary resources={{ [give]: rate }} />
-            <ArrowRight size={18} />
-            <ResourceSummary resources={{ [receive]: 1 }} />
-          </div>
-          <Button
-            className="full"
-            disabled={(me.resources?.[give] || 0) < rate || !game.bank[receive]}
-            onClick={() => onAction("bankTrade", { give, receive, amount: 1 })}
-          >
-            <RefreshCw size={16} />
-            Exchange resources
-          </Button>
-        </>
-      ) : (
-        <>
-          <p className="modal-description">
-            Offer resources to other players. The first player to accept
-            completes the exchange.
-          </p>
-          <div className="trade-pickers">
-            <div>
-              <h4>You offer</h4>
-              <ResourcePicker
-                label="offer"
-                values={offer}
-                onChange={setOffer}
-                max={me.resources}
-              />
-            </div>
-            <div>
-              <h4>You ask for</h4>
-              <ResourcePicker
-                label="request"
-                values={want}
-                onChange={setWant}
-              />
-            </div>
-          </div>
-          <Button
-            className="full"
-            disabled={
-              !total(offer) ||
-              !total(want) ||
-              RES.some((r) => offer[r] && want[r])
-            }
-            onClick={async () => {
-              if (await onAction("offerTrade", { give: offer, want }))
-                onClose();
-            }}
-          >
-            <Handshake size={17} />
-            Make an offer
-          </Button>
-          <p className="muted-note">
-            The same resource cannot appear on both sides of a trade.
-          </p>
-        </>
-      )}
+      <p className="trade-modal-status" role="status">{hint}</p>
+      <div className="modal-actions trade-modal-actions">
+        <Button type="button" disabled={!bank.payload || busy}
+          aria-description={bank.rate ? `Exchange rate ${bank.rate} to 1` : undefined}
+          onClick={() => submit("bankTrade", bank.payload)}>
+          <Landmark size={17} aria-hidden="true" /> Trade with bank
+          {bank.rate && <small aria-hidden="true">{bank.rate}:1</small>}
+        </Button>
+        <Button type="button" disabled={!complete || !playerTrading || full || busy}
+          onClick={() => submit("offerTrade", { give, want })}>
+          <Users size={17} aria-hidden="true" /> Offer to players
+        </Button>
+      </div>
     </Modal>
   );
 }
@@ -1803,7 +1718,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
     host = lobby.hostId === meId;
   const [abandon, setAbandon] = useState(false),
     [mode, setMode] = useState(null),
-    [trade, setTrade] = useState(false),
+    [trade, setTrade] = useState(null),
     [dev, setDev] = useState(null),
     [sidebar, setSidebar] = useState("activity"),
     [now, setNow] = useState(Date.now());
@@ -1813,9 +1728,9 @@ function Game({ lobby, meId, command, busy, onHelp }) {
   }, []);
   useEffect(() => {
     setMode(null);
-    setTrade(false);
+    setTrade(null);
     setDev(null);
-  }, [game.phase, game.activePlayerId]);
+  }, [game.phase, game.activePlayerId, game.roadBuildingRemaining]);
   if (!me)
     return (
       <main className="loading-state">
@@ -1839,6 +1754,10 @@ function Game({ lobby, meId, command, busy, onHelp }) {
       ["roll", "action"].includes(game.phase) &&
       !game.developmentPlayed &&
       !game.roadBuildingRemaining;
+  const openTrade = (resource = null) => {
+    setMode(null);
+    setTrade({ resource });
+  };
   const afford = (type) =>
       Object.entries(COSTS[type]).every(
         ([r, n]) => (me.resources?.[r] || 0) >= n,
@@ -2128,8 +2047,9 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                 <>
                   <Button
                     variant="outline"
-                    disabled={!canAct}
-                    onClick={() => setTrade(true)}
+                    disabled={!canAct || !!busy}
+                    aria-haspopup="dialog"
+                    onClick={() => openTrade()}
                   >
                     <Handshake size={17} />
                     Trade
@@ -2197,6 +2117,13 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   <span className="resource-card-count">
                     {me.resources?.[r] || 0}
                   </span>
+                  {canAct && me.resources?.[r] > 0 && (
+                    <button type="button" className="resource-card-trade"
+                      aria-label={"Trade " + META[r].name}
+                      aria-description={me.resources[r] + " in hand"}
+                      aria-haspopup="dialog" disabled={!!busy}
+                      onClick={() => openTrade(r)} />
+                  )}
                 </div>
               ))}
               <div className="development-hand">
@@ -2282,11 +2209,13 @@ function Game({ lobby, meId, command, busy, onHelp }) {
           </div>
         </Modal>
       )}
-      {trade && (
+      {trade && canAct && (
         <TradeModal
           game={game}
           me={me}
-          onClose={() => setTrade(false)}
+          busy={!!busy}
+          initialResource={trade.resource}
+          onClose={() => setTrade(null)}
           onAction={action}
         />
       )}

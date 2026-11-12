@@ -1688,6 +1688,16 @@ select:disabled {
 .resource-card.empty {
   opacity: 0.48;
 }
+.resource-card-trade {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+.resource-card-trade:hover:not(:disabled), .resource-card-trade:focus-visible {
+  box-shadow: inset 0 0 0 2px #91754a;
+}
 .resource-card-count {
   position: absolute;
   right: 5px;
@@ -1967,44 +1977,6 @@ select:disabled {
   color: #657351;
   font-weight: 600;
 }
-.bank-exchange {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.bank-exchange > .field-label {
-  flex: 1;
-  min-width: 0;
-}
-.bank-exchange select {
-  font-size: 11px;
-  padding: 11px 8px;
-}
-.exchange-rate {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  color: #a59b75;
-  gap: 4px;
-  padding: 9px 3px 0;
-}
-.exchange-rate > strong {
-  font-family: Georgia, serif;
-  font-size: 17px;
-  font-weight: 400;
-}
-.exchange-preview {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 25px;
-  padding: 15px;
-  margin-bottom: 20px;
-  background: #f4f2e3;
-  border: 1px dashed #dcd9c1;
-  border-radius: 6px;
-  color: #b1ad8b;
-}
 .resource-picker {
   display: flex;
   flex-direction: column;
@@ -2071,6 +2043,15 @@ select:disabled {
 .trade-pickers .quantity > span {
   min-width: 24px;
 }
+.trade-modal-status {
+  color: #657351;
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+.trade-modal-status:empty { margin: 0; }
+.trade-modal-actions { flex-wrap: wrap; }
+.trade-modal-actions .button:disabled { filter: grayscale(1); }
+.trade-modal-actions small { white-space: nowrap; }
 .selection-count {
   font-size: 11px;
   text-align: center;
