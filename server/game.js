@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { resourceName } from '../shared/resource-names.js';
 import { bankTradeRate, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from '../shared/trades.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
@@ -98,7 +99,7 @@ function pay(g, p, cost, moves) {
   for (const [r, n] of Object.entries(cost)) { p.resources[r] -= n; g.bank[r] += n; }
   if (moves) moveResources(moves, playerHand(p.id), bank, cost);
 }
-function grant(g, p, map) { for (const [r, n] of Object.entries(map)) { requireThat(g.bank[r] >= n, `The supply does not have enough ${r}.`); g.bank[r] -= n; p.resources[r] += n; } }
+function grant(g, p, map) { for (const [r, n] of Object.entries(map)) { requireThat(g.bank[r] >= n, `The supply does not have enough ${resourceName(r)}.`); g.bank[r] -= n; p.resources[r] += n; } }
 function produceResources(g, total, moves) {
   const due = Object.fromEntries(RESOURCES.map(r => [r, new Map()]));
   for (const h of g.board.hexes) if (h.number === total && h.id !== g.robberHexId) {
@@ -115,7 +116,7 @@ function produceResources(g, total, moves) {
     const recipients = due[r];
     const demand = [...recipients.values()].flatMap(tiles => [...tiles.values()]).reduce((n, count) => n + count, 0);
     if (demand > g.bank[r] && recipients.size > 1) {
-      addLog(g, `The ${r} supply cannot cover production; nobody receives ${r}.`);
+      addLog(g, `The ${resourceName(r)} supply cannot cover production; nobody receives ${resourceName(r)}.`);
       continue;
     }
     for (const [id, tiles] of recipients) for (const [hexId, count] of tiles) {
@@ -371,11 +372,11 @@ function applyAction(g, id, type, payload, moves) {
       requireThat(RESOURCES.includes(give) && RESOURCES.includes(receive) && give !== receive, 'Choose two different resources.');
       requireThat(Number.isInteger(amount) && amount >= 1 && amount <= 24, 'Choose a valid trade quantity.');
       const ratio = bankTradeRate(g.board.vertices, id, give);
-      requireThat(g.bank[receive] >= amount, `The supply does not have enough ${receive}.`);
+      requireThat(g.bank[receive] >= amount, `The supply does not have enough ${resourceName(receive)}.`);
       const given = { [give]: ratio * amount }, received = { [receive]: amount };
       pay(g, p, given, moves); grant(g, p, received);
       moveResources(moves, bank, playerHand(id), received);
-      addLog(g, `${p.name} exchanged ${ratio * amount} ${give} for ${amount} ${receive}.`); break;
+      addLog(g, `${p.name} exchanged ${ratio * amount} ${resourceName(give)} for ${amount} ${resourceName(receive)}.`); break;
     }
     case 'offerTrade': {
       requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
@@ -408,7 +409,7 @@ function applyAction(g, id, type, payload, moves) {
       } else if (card.type === 'monopoly') {
         requireThat(RESOURCES.includes(payload.resource), 'Choose a resource to monopolize.');
         let count = 0; for (const other of g.players) if (other.id !== id) { count += other.resources[payload.resource]; other.resources[payload.resource] = 0; }
-        p.resources[payload.resource] += count; addLog(g, `${p.name} collected ${count} ${payload.resource} with Monopoly.`);
+        p.resources[payload.resource] += count; addLog(g, `${p.name} collected ${count} ${resourceName(payload.resource)} with Monopoly.`);
       } else if (card.type === 'roadBuilding') {
         requireThat(roadTargets(g, id).length > 0, 'You have no legal road to build.');
         g.roadBuildingRemaining = Math.min(2, p.roadsLeft); g.roadBuildingReturnPhase = returnPhase; phase(g, 'action');

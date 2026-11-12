@@ -72,7 +72,7 @@
   scrollbar-width: thin;
   scrollbar-color: #a1875a #16251d;
 }
-.draft-card-row[data-size="picker"] { --draft-card-width: clamp(35px, 3.5vw, 41px); --draft-name-size: 10px; }
+.draft-card-row[data-size="picker"] { --draft-card-width: clamp(35px, 3.5vw, 41px); --draft-name-size: 9px; }
 .draft-card-row[data-size="offer"] { --draft-card-width: clamp(39px, 3.5vw, 51px); --draft-name-size: 10px; }
 .draft-card-row[data-size="hand"] { --draft-card-width: clamp(64px, 7.5vw, 91px); --draft-name-size: 14px; padding: 5px; }
 .draft-card-row > li {
@@ -108,7 +108,7 @@
 .draft-card-shell .card-face .card-illustration { inset: 3px 3px 22%; }
 .draft-card-shell .fan-emblem { top: 3px; left: 3px; min-width: 13px; height: 14px; }
 .draft-card-shell .fan-emblem svg { width: 10px; height: 10px; }
-.draft-card-shell .fan-name { inset: auto 2px 2px; min-height: 22%; padding: 0; }
+.draft-card-shell .fan-name { inset: auto 1px 2px; min-height: 22%; padding: 0; }
 .draft-card-shell .fan-name strong { font-size: var(--draft-name-size, 11px); }
 .draft-card-mark {
   position: absolute;
@@ -187,7 +187,7 @@
   border: 1px solid #634f33;
 }
 .draft-face-icon { position: absolute; top: 3px; left: 3px; padding: 1px; line-height: 0; background: #f7e6b9; color: var(--draft-ink); }
-.draft-face strong { position: absolute; inset: auto 2px 2px; text-align: center; font: 700 var(--draft-name-size, 11px)/1.1 Georgia, serif; }
+.draft-face strong { position: absolute; inset: auto 1px 2px; text-align: center; font: 700 var(--draft-name-size, 11px)/1.1 Georgia, serif; }
 .draft-flight-layer { position: fixed; z-index: 10; inset: 0; pointer-events: none; overflow: hidden; }
 .draft-flight { position: absolute; left: 0; top: 0; }
 .draft-flight[data-hand-size] { --draft-name-size: 14px; }

@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { Archive, ArrowDownToLine, ArrowUpFromLine, Landmark, Minus, Package, Plus, Undo2, Users, X } from "lucide-react";
+import { resourceName } from "../shared/resource-names.js";
 import { bankTradeRate, MAX_TRADE_OFFERS, playerTradesAvailable } from "../shared/trades.js";
 import { useDraftFlights } from "./draft-flights.js";
 import { heldCopies, resourceCopies, resourceCounts } from "./resource-copies.js";
@@ -101,7 +102,7 @@ export function ResourceCardDraft({ game, me, offers, tradeOpen, canTrade, disca
   const giveCounts = resourceCounts(give), wantCounts = resourceCounts(want);
   const selected = new Set(mode ? give.map(card => card.id) : []);
   const bank = mode === "trade" ? bankTradeDraft(giveCounts, wantCounts, game.bank,
-    type => bankTradeRate(game.board.vertices, me.id, type), type => meta[type].name.toLowerCase()) : {};
+    type => bankTradeRate(game.board.vertices, me.id, type), resourceName) : {};
   const full = offers.length >= MAX_TRADE_OFFERS;
   const canOffer = mode === "trade" && playerTradesAvailable(game);
   const complete = give.length > 0 && want.length > 0;

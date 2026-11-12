@@ -1,12 +1,13 @@
 import React, { useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, SkipBack, SkipForward } from "lucide-react";
+import { gameLogText } from "./game-log-text.js";
 
 export const turnLabel = turn => turn ? `Turn ${turn}` : "Setup";
 const percent = (step, last) => 100 * step / Math.max(1, last);
 
 export function moveLabel(frame, players) {
   const actor = players.find(player => player.id === frame.move.actorId);
-  return frame.move.text || (actor ? `${actor.name} completed a move.` : "");
+  return frame.move.text ? gameLogText(frame.move.text) : (actor ? `${actor.name} completed a move.` : "");
 }
 
 function frameTurnLabel(frame) {

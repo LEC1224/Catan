@@ -53,6 +53,8 @@ import {
   Bot,
 } from "lucide-react";
 import { Sheep } from "./sheep-icon.js";
+import { resourceName } from "../shared/resource-names.js";
+import { gameLogText } from "./game-log-text.js";
 import "./styles.css";
 import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
 import { useRollReminder } from "./roll-reminder.js";
@@ -65,7 +67,7 @@ const RES = ["wood", "brick", "wool", "wheat", "ore"];
 const META = {
   wood: { name: "Wood", icon: Trees, color: "#42714d", tile: 0 },
   wheat: { name: "Wheat", icon: Wheat, color: "#ba9140", tile: 1 },
-  wool: { name: "Wool", icon: Sheep, color: "#8b9b59", tile: 2 },
+  wool: { name: resourceName("wool"), icon: Sheep, color: "#8b9b59", tile: 2 },
   brick: { name: "Brick", icon: Package, color: "#b46c48", tile: 3 },
   ore: { name: "Ore", icon: Mountain, color: "#727d87", tile: 4 },
   desert: { name: "Desert", icon: Compass, color: "#c7ad75", tile: 5 },
@@ -2098,7 +2100,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
               {[...(game.log || [])].reverse().map((entry, i) => (
                 <div className="activity-entry" key={`${entry.at}-${i}`}>
                   <span className="activity-bullet" />
-                  <p>{entry.text}</p>
+                  <p>{gameLogText(entry.text)}</p>
                 </div>
               ))}
             </div>
