@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { Sheep } from "./sheep-icon.js";
 import "./styles.css";
-import { CardDealLayer, PlayerHandBacks } from "./card-deals.jsx";
+import { CardDealLayer, PlayerHandBacks, useCardDeals } from "./card-deals.jsx";
 import { MatchResults } from "./match-results.jsx";
 import { CityUpgradePreview } from "./build-preview.jsx";
 import { FriendlyRobberHint, RobberHexMark } from "./robber-guide.jsx";
@@ -1233,7 +1233,6 @@ function Board({ game, meId, mode, previewCities, onAction }) {
             <polygon
               points={points}
               fill={META[h.terrain]?.color}
-              data-deal-tile={h.id}
               stroke="#d2bc83"
               strokeWidth="3"
               filter="url(#tile-shadow)"
@@ -1254,6 +1253,7 @@ function Board({ game, meId, mode, previewCities, onAction }) {
               </svg>
               <polygon points={points} fill="#173b2b" opacity=".07" />
             </g>
+            <polygon points={points} className="deal-tile-cue" data-deal-tile={h.id} aria-hidden="true" />
             <RobberHexMark state={state} points={points} x={h.x} y={h.y} />
             {h.number && (
               <g transform={`translate(${h.x},${h.y + 2})`}>
@@ -1730,6 +1730,8 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
     [sidebar, setSidebar] = useState("activity"),
     [now, setNow] = useState(Date.now());
   const matchPage = useRef(null);
+  const deals = useCardDeals({ matchId: lobby.matchId || lobby.id, stream: lobby.cardDealStream,
+    game, me: game.phase === "finished" ? null : me });
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -1794,6 +1796,12 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                     ? `Choose a highlighted ${mode === "road" ? "edge" : "location"} for your ${mode}.`
                     : "Trade or build, then end your turn.";
   const overDiscardLimit = me.resourceCount > game.settings.discardThreshold;
+  const dealtResources = { ...me.resources };
+  for (const id of deals.pending.keys()) {
+    const [type, index] = id.split(":");
+    if (index !== undefined) dealtResources[type]--;
+  }
+  const dealtDevelopment = me.development?.filter(card => !deals.pending.has(card.id)) || [];
   const offered = game.tradeOffers?.[0] ?? game.tradeOffer,
     offerOwner = game.players.find((p) => p.id === offered?.from),
     canAccept =
@@ -2114,7 +2122,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                 <div
                   key={r}
                   data-deal-pile={r}
-                  className={`resource-card ${!me.resources?.[r] ? "empty" : ""}`}
+                  className={`resource-card ${!dealtResources[r] ? "empty" : ""}`}
                 >
                   <AtlasArt terrain={r} />
                   <div className="resource-card-name">
@@ -2122,20 +2130,20 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
                     <strong>{META[r].name}</strong>
                   </div>
                   <span className="resource-card-count">
-                    {me.resources?.[r] || 0}
+                    {dealtResources[r] || 0}
                   </span>
-                  {canAct && me.resources?.[r] > 0 && (
+                  {canAct && dealtResources[r] > 0 && (
                     <button type="button" className="resource-card-trade"
                       aria-label={"Trade " + META[r].name}
-                      aria-description={me.resources[r] + " in hand"}
+                      aria-description={dealtResources[r] + " in hand"}
                       aria-haspopup="dialog" disabled={!!busy}
                       onClick={() => openTrade(r)} />
                   )}
                 </div>
               ))}
               <div className="development-hand" data-deal-hand="development">
-                {me.development?.length ? (
-                  me.development.map((card) => {
+                {dealtDevelopment.length ? (
+                  dealtDevelopment.map((card) => {
                     const meta = DEV_META[card.type] || DEV_META.knight,
                       Icon = meta.icon,
                       available =
@@ -2203,8 +2211,7 @@ function Game({ lobby, meId, command, busy, onHelp, onCopyInvite, onLeave }) {
           )}
         </aside>
       </div>
-      <CardDealLayer scope={matchPage} matchId={lobby.matchId || lobby.id} stream={lobby.cardDealStream} game={game} me={me}
-        resourceMeta={META} developmentMeta={DEV_META} />
+      <CardDealLayer scope={matchPage} game={game} me={me} deals={deals} resourceMeta={META} developmentMeta={DEV_META} />
       {abandon && (
         <Modal title="End current game?" onClose={() => setAbandon(false)}>
           <p className="modal-description">

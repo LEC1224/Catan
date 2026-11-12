@@ -68,10 +68,18 @@
 }
 .deal-risk-label { color: #943e31; }
 
-[data-deal-pending] { visibility: hidden; }
 .fan-face[data-deal-animated] { animation: none; }
-.fan-slot:has([data-deal-pending]) { transition: none; }
-.fan-target:focus-visible [data-deal-pending] { visibility: visible; }
+.fan-size-probe[data-deal-size] { height: var(--card-height); visibility: hidden; }
+.fan-slot[data-deal-landing] { z-index: 201; }
+.deal-tile-cue {
+  fill: none;
+  stroke: #ffe3a0;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  pointer-events: none;
+}
 .deal-layer { position: fixed; z-index: 12; inset: 0; pointer-events: none; overflow: hidden; }
 .deal-flying-card { display: block; position: absolute; left: 0; top: 0; opacity: 0; perspective: 500px; }
 .deal-card-turner, .deal-card-plane { position: absolute; display: block; inset: 0; }
