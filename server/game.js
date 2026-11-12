@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { bankTradeRate, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from '../shared/trades.js';
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { wool: 1, wheat: 1, ore: 1 } };
@@ -138,7 +139,7 @@ function updateScores(g) {
 function checkVictory(g) {
   if (g.phase.startsWith('setup') || g.phase === 'finished') return;
   const p = player(g, g.activePlayerId);
-  if (p?.score >= g.settings.victoryPoints) { g.winnerId = p.id; g.phase = 'finished'; g.deadline = null; g.tradeOffer = null; addLog(g, `${p.name} won with ${p.score} victory points!`); }
+  if (p?.score >= g.settings.victoryPoints) { g.winnerId = p.id; g.phase = 'finished'; g.deadline = null; g.tradeOffers = []; addLog(g, `${p.name} won with ${p.score} victory points!`); }
 }
 function settlementTargets(g, id, setup = false) {
   const p = player(g, id);
@@ -169,7 +170,7 @@ function legal(g, id) {
 }
 function startTurn(g, index, paired = false) {
   g.activePlayerId = g.players[index].id; g.pairedPlayer = paired; g.turn++; g.developmentPlayed = false;
-  g.roadBuildingRemaining = 0; g.tradeOffer = null; g.discardRequired = {}; g.stealTargets = []; g.dice = paired ? g.dice : null;
+  g.roadBuildingRemaining = 0; g.tradeOffers = []; g.discardRequired = {}; g.stealTargets = []; g.dice = paired ? g.dice : null;
   phase(g, paired ? 'action' : 'roll');
   addLog(g, `${g.players[index].name}'s ${paired ? 'paired action' : 'turn'}.`);
   checkVictory(g);
@@ -197,11 +198,44 @@ export function createGame(players, settings = {}) {
     phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, dice: null,
     robberHexId: board.hexes.find(h => h.terrain === 'desert').id, longestRoadHolder: null, largestArmyHolder: null,
     log: [], pairedPlayer: false, primaryIndex: 0, setupOrder: [...players.map(p => p.id), ...players.map(p => p.id).reverse()], setupIndex: 0, setupVertexId: null,
-    discardRequired: {}, stealTargets: [], tradeOffer: null, roadBuildingRemaining: 0, developmentPlayed: false,
+    discardRequired: {}, stealTargets: [], tradeOffers: [], roadBuildingRemaining: 0, developmentPlayed: false,
   };
   setDeadline(g); addLog(g, 'Place your first settlement and road.');
   if (players.length === 2) addLog(g, 'Two-player casual variant: standard core rules without neutral players.');
   return g;
+}
+
+function respondToTrade(g, p, type, offerId) {
+  // Turning an offer down doesn't spend cards or interrupt a pending board action.
+  if (type !== 'declineTrade') requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
+  // Older clients can accept or withdraw the only offer they can see.
+  const legacyResponse = offerId === undefined && type !== 'declineTrade' && g.tradeOffers.length === 1;
+  const index = legacyResponse ? 0 : g.tradeOffers.findIndex((offer) => offer.id === offerId);
+  requireThat(index >= 0, 'That trade offer is no longer open.');
+  const offer = g.tradeOffers[index];
+  if (type === 'cancelTrade') {
+    requireThat(offer.from === p.id, 'Only the sender can withdraw this offer.');
+    g.tradeOffers.splice(index, 1);
+    return;
+  }
+  requireThat(offer.from !== p.id, 'You cannot respond to your own offer.');
+  requireThat(!offer.declinedBy.includes(p.id), 'You already declined this offer.');
+  const sender = player(g, offer.from);
+  if (type === 'declineTrade') {
+    offer.declinedBy.push(p.id);
+    if (offer.declinedBy.length === g.players.length - 1) {
+      g.tradeOffers.splice(index, 1);
+      addLog(g, `All players declined ${sender.name}’s offer.`);
+    }
+    return;
+  }
+  requireThat(canPay(sender, offer.give) && canPay(p, offer.want), 'One player no longer has the offered resources.');
+  for (const r of RESOURCES) {
+    p.resources[r] += offer.give[r] - offer.want[r];
+    sender.resources[r] += offer.want[r] - offer.give[r];
+  }
+  g.tradeOffers.splice(index, 1);
+  addLog(g, `${p.name} traded with ${sender.name}.`);
 }
 
 function applyAction(g, id, type, payload) {
@@ -216,13 +250,7 @@ function applyAction(g, id, type, payload) {
     if (!Object.keys(g.discardRequired).length) activateRobber(g);
     return;
   }
-  if (type === 'acceptTrade') {
-    requireThat(g.phase === 'action' && !g.roadBuildingRemaining && g.tradeOffer && g.tradeOffer.from !== id && !g.pairedPlayer, 'There is no trade you can accept.');
-    const offer = g.tradeOffer, other = player(g, offer.from);
-    requireThat(canPay(other, offer.give) && canPay(p, offer.want), 'One player no longer has the offered resources.');
-    for (const r of RESOURCES) { p.resources[r] += offer.give[r] - offer.want[r]; other.resources[r] += offer.want[r] - offer.give[r]; }
-    addLog(g, `${p.name} traded with ${other.name}.`); g.tradeOffer = null; return;
-  }
+  if (['acceptTrade', 'declineTrade', 'cancelTrade'].includes(type)) return respondToTrade(g, p, type, payload.offerId);
   requireThat(g.activePlayerId === id, 'Wait for your turn.');
   if (g.roadBuildingRemaining) requireThat(type === 'placeRoad', 'Finish placing your free roads first.');
   switch (type) {
@@ -305,18 +333,18 @@ function applyAction(g, id, type, payload) {
       const { give, receive } = payload, amount = payload.amount ?? 1;
       requireThat(RESOURCES.includes(give) && RESOURCES.includes(receive) && give !== receive, 'Choose two different resources.');
       requireThat(Number.isInteger(amount) && amount >= 1 && amount <= 24, 'Choose a valid trade quantity.');
-      const ports = g.board.vertices.filter(v => v.building?.owner === id).map(v => v.port), ratio = ports.includes(give) ? 2 : ports.includes('any') ? 3 : 4;
+      const ratio = bankTradeRate(g.board.vertices, id, give);
       requireThat(g.bank[receive] >= amount, `The supply does not have enough ${receive}.`);
       pay(g, p, { [give]: ratio * amount }); grant(g, p, { [receive]: amount }); addLog(g, `${p.name} exchanged ${ratio * amount} ${give} for ${amount} ${receive}.`); break;
     }
     case 'offerTrade': {
-      requireThat(g.phase === 'action' && g.settings.allowPlayerTrading && !g.pairedPlayer, 'Player trading is not available now.');
+      requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
+      requireThat(g.tradeOffers.length < MAX_TRADE_OFFERS, `You can have ${MAX_TRADE_OFFERS} offers open. Withdraw one to send another.`);
       const give = resourceMap(payload.give, { nonzero: true }), want = resourceMap(payload.want, { nonzero: true });
       requireThat(!RESOURCES.some(r => give[r] && want[r]), 'The same resource cannot appear on both sides of a trade.');
       requireThat(canPay(p, give), 'You do not have the offered resources.');
-      g.tradeOffer = { id: randomUUID(), from: id, give, want }; break;
+      g.tradeOffers.push({ id: randomUUID(), from: id, give, want, declinedBy: [] }); break;
     }
-    case 'cancelTrade': requireThat(g.phase === 'action', 'There is no trade to cancel now.'); g.tradeOffer = null; break;
     case 'buyDevelopment': {
       requireThat(g.phase === 'action', 'Buy development cards during your action phase.');
       requireThat(g.developmentDeck.length > 0, 'The development deck is empty.');
@@ -351,8 +379,15 @@ function applyAction(g, id, type, payload) {
 export function action(game, playerId, type, payload = {}) {
   // Commit only successful commands: invalid card selections/trades never partially mutate a game.
   const draft = structuredClone(game);
+  if (!draft.tradeOffers) draft.tradeOffers = openTradeOffers(draft).map((offer) => ({ ...offer, declinedBy: [] }));
+  delete draft.tradeOffer;
   applyAction(draft, playerId, type, payload);
-  enforceHandLimits(draft); updateScores(draft); checkVictory(draft);
+  enforceHandLimits(draft);
+  draft.tradeOffers = draft.tradeOffers.filter((offer) => {
+    const sender = player(draft, offer.from);
+    return sender && canPay(sender, offer.give);
+  });
+  updateScores(draft); checkVictory(draft);
   for (const key of Object.keys(game)) delete game[key];
   Object.assign(game, draft);
   return game;
@@ -360,6 +395,11 @@ export function action(game, playerId, type, payload = {}) {
 
 export function viewGame(g, playerId) {
   const { developmentDeck, playedDevelopment, setupOrder, setupIndex, setupVertexId, robberReturnPhase, roadBuildingReturnPhase, primaryIndex, ...visible } = structuredClone(g);
+  visible.tradeOffers = openTradeOffers(visible).flatMap(({ declinedBy = [], ...offer }) => {
+    if (offer.from === playerId) return [{ ...offer, declinedBy }];
+    return declinedBy.includes(playerId) ? [] : [offer];
+  });
+  visible.tradeOffer = visible.tradeOffers.length === 1 ? visible.tradeOffers[0] : null;
   visible.developmentRemaining = developmentDeck.length;
   visible.players = visible.players.map(p => p.id === playerId || g.phase === 'finished' ? p : { ...p, resources: null, development: null, score: p.visibleScore });
   visible.legal = legal(g, playerId);

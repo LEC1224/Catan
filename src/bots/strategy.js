@@ -1,4 +1,6 @@
 // Browser-only decision policy. Accepts exactly one player's masked view, never server state.
+import { bankTradeRate, openTradeOffers, playerTradesAvailable } from '../../shared/trades.js';
+
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COST = {
   placeSettlement: { wood: 1, brick: 1, wool: 1, wheat: 1 },
@@ -24,8 +26,7 @@ function context(g, id, difficulty) {
       if (h.terrain !== 'desert') production[h.terrain] += pips(h) * (v.building.type === 'city' ? 2 : 1);
     }
   }
-  const ports = g.board.vertices.filter(v => v.building?.owner === id).map(v => v.port);
-  const ratios = Object.fromEntries(RESOURCES.map(r => [r, ports.includes(r) ? 2 : ports.includes('any') ? 3 : 4]));
+  const ratios = Object.fromEntries(RESOURCES.map(r => [r, bankTradeRate(g.board.vertices, id, r)]));
   const yieldAt = v => v.hexIds.reduce((n, hId) => n + pips(hexes.get(hId)), 0);
   const siteValue = v => yieldAt(v) + (difficulty === 'easy' ? 0 : v.hexIds.reduce((n, hId) => {
     const h = hexes.get(hId);
@@ -153,11 +154,18 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
     return { type: 'discard', resources };
   }
   // Off-turn trade decisions use only our hand and public opponent scores.
-  if (g.phase === 'action' && g.tradeOffer && g.tradeOffer.from !== id && !g.roadBuildingRemaining && !g.pairedPlayer) {
-    const offer = g.tradeOffer, other = g.players.find(p => p.id === offer.from);
-    if (pays(p.resources, offer.want) && (difficulty === 'easy' || other.visibleScore < g.settings.victoryPoints - 2)) {
-      const value = map => RESOURCES.reduce((n, r) => n + map[r] * (1 + 2 / (1 + p.resources[r]) + (c.production[r] === 0 ? 0.7 : 0)), 0);
-      if (value(offer.give) > value(offer.want) * (difficulty === 'easy' ? 0.85 : 1.05)) return { type: 'acceptTrade' };
+  const trading = playerTradesAvailable(g);
+  const offers = openTradeOffers(g);
+  if (trading && g.activePlayerId !== id) {
+    const incoming = offers.filter(offer => offer.from !== id);
+    if (incoming.length) {
+      const value = map => RESOURCES.reduce((n, r) => n + (map[r] || 0) * (1 + 2 / (1 + p.resources[r]) + (c.production[r] === 0 ? 0.7 : 0)), 0);
+      const good = incoming.map(offer => {
+        const sender = g.players.find(other => other.id === offer.from);
+        return { id: offer.id, surplus: pays(p.resources, offer.want) && (difficulty === 'easy' || sender.visibleScore < g.settings.victoryPoints - 2)
+          ? value(offer.give) - value(offer.want) * (difficulty === 'easy' ? 0.85 : 1.05) : 0 };
+      }).sort((a, b) => b.surplus - a.surplus)[0];
+      return good.surplus > 0 ? { type: 'acceptTrade', offerId: good.id } : { type: 'declineTrade', offerId: incoming[0].id };
     }
   }
   if (g.activePlayerId !== id) return null;
@@ -178,9 +186,10 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
   }), difficulty, random)?.action || null;
   if (g.phase === 'steal') return pick(g.stealTargets.map(targetId => ({ action: { type: 'steal', targetId }, score: g.players.find(p => p.id === targetId).visibleScore * 2 })), difficulty, random)?.action || null;
   if (g.phase !== 'action') return null;
-  if (g.tradeOffer?.from === id) {
+  const own = trading && offers.find(offer => offer.from === id);
+  if (own) {
     memory.offerUntil ??= now + 6000;
-    return now >= memory.offerUntil ? { type: 'cancelTrade' } : null;
+    return now >= memory.offerUntil ? { type: 'cancelTrade', offerId: own.id } : null;
   }
   const options = goals(g, id, c, difficulty);
   const target = pick(options.map(o => ({ ...o, score: o.score / (1 + missing(p.resources, COST[o.action.type]) * 0.6) + (memory.goal === JSON.stringify(o.action) ? 2 : 0) })), difficulty, random);
@@ -194,7 +203,7 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
     .filter(o => o.plan?.length).map(o => ({ ...o, score: o.score / (1 + o.plan.length * 0.2) }));
   const plan = pick(plans, difficulty, random);
   if (plan) return plan.plan[0];
-  if (target && !memory.offered && g.settings.allowPlayerTrading && !g.pairedPlayer) {
+  if (target && !memory.offered && trading) {
     const receive = RESOURCES.find(r => p.resources[r] < (cost[r] || 0));
     const give = RESOURCES.filter(r => r !== receive && p.resources[r] > (cost[r] || 0))
       .sort((a, b) => p.resources[b] - p.resources[a])[0];

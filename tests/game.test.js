@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame, action, viewGame, tick, RESOURCES } from '../server/game.js';
+import { MAX_TRADE_OFFERS } from '../shared/trades.js';
 
 const players = n => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `Player ${i}`, color: ['#a44', '#4a4', '#44a', '#aa4', '#a4a', '#4aa'][i] }));
 const make = (n = 3, settings = {}) => createGame(players(n), { seed: 'engine-test', turnSeconds: 120, ...settings });
@@ -19,7 +20,10 @@ function setup(g) {
 function ready(n = 3, settings = {}) { const g = setup(make(n, settings)); g.phase = 'action'; return g; }
 function give(g, id, resource, count) { const p = g.players.find(p => p.id === id); const change = count - p.resources[resource]; p.resources[resource] = count; g.bank[resource] -= change; }
 function card(g, id, type, turnBought = 0) { const c = { id: `test-${type}`, type, turnBought }; g.players.find(p => p.id === id).development.push(c); return c.id; }
-function update(g) { action(g, g.activePlayerId, 'cancelTrade'); }
+function update(g) {
+  g.tradeOffers.push({ id: 'refresh', from: g.activePlayerId, declinedBy: [] });
+  action(g, g.activePlayerId, 'cancelTrade', { offerId: 'refresh' });
+}
 function path(g, length, forbidden = new Set()) {
   function walk(at, ids, visited) {
     if (ids.length === length) return ids;
@@ -182,8 +186,73 @@ test('player trades are atomic, cannot be gifts, and require active player offer
   assert.throws(() => action(g, 'p1', 'offerTrade', { give: { ore: 1 }, want: { wood: 1 } }), /Wait/);
   action(g, 'p0', 'offerTrade', { give: { wood: 2 }, want: { ore: 1 } });
   const beforeWood = g.players[1].resources.wood, beforeOre = g.players[0].resources.ore;
+  action(g, 'p1', 'acceptTrade', { offerId: g.tradeOffers[0].id });
+  assert.equal(g.players[1].resources.wood, beforeWood + 2); assert.equal(g.players[0].resources.ore, beforeOre + 1); assert.equal(g.tradeOffers.length, 0);
+  conservation(g);
+});
+
+test('concurrent offers can be declined, accepted and withdrawn independently', () => {
+  const g = ready();
+  give(g, 'p0', 'wood', 4);
+  give(g, 'p1', 'ore', 2);
+  give(g, 'p2', 'ore', 2);
+  action(g, 'p0', 'offerTrade', { give: { wood: 1 }, want: { ore: 1 } });
+  action(g, 'p0', 'offerTrade', { give: { wood: 2 }, want: { ore: 1 } });
+  const [first, second] = g.tradeOffers.map(o => o.id);
+  const ids = (id) => viewGame(g, id).tradeOffers.map(o => o.id);
+
+  assert.throws(() => action(g, 'p1', 'cancelTrade', { offerId: first }), /sender/);
+  action(g, 'p1', 'declineTrade', { offerId: first });
+  assert.deepEqual(ids('p1'), [second]);
+  assert.deepEqual(ids('p2'), [first, second]);
+  assert.deepEqual(viewGame(g, 'p0').tradeOffers[0].declinedBy, ['p1']);
+  assert.equal(viewGame(g, 'p2').tradeOffers[0].declinedBy, undefined);
+  assert.throws(() => action(g, 'p1', 'acceptTrade', { offerId: first }), /declined/);
+  action(g, 'p1', 'acceptTrade', { offerId: second });
+  assert.deepEqual(ids('p0'), [first]);
+  action(g, 'p2', 'declineTrade', { offerId: first });
+  assert.deepEqual(ids('p0'), []);
+
+  action(g, 'p0', 'offerTrade', { give: { wood: 1 }, want: { ore: 1 } });
+  action(g, 'p0', 'cancelTrade', { offerId: g.tradeOffers[0].id });
+  assert.deepEqual(ids('p2'), []);
+  conservation(g);
+});
+
+test('offers cannot spend the same cards twice, and remaining offers expire at end of turn', () => {
+  const g = ready();
+  give(g, 'p0', 'wood', 2);
+  give(g, 'p1', 'ore', 1);
+  give(g, 'p2', 'ore', 1);
+  const terms = { give: { wood: 2 }, want: { ore: 1 } };
+  for (let i = 0; i < MAX_TRADE_OFFERS; i++) action(g, 'p0', 'offerTrade', terms);
+  assert.throws(() => action(g, 'p0', 'offerTrade', terms), /Withdraw one/);
+  const [first, second] = g.tradeOffers.map(o => o.id);
+  action(g, 'p1', 'acceptTrade', { offerId: first });
+  assert.equal(g.tradeOffers.length, 0);
+  const before = structuredClone(g);
+  assert.throws(() => action(g, 'p2', 'acceptTrade', { offerId: second }), /no longer open/);
+  assert.deepEqual(g, before);
+
+  action(g, 'p0', 'offerTrade', { give: { ore: 1 }, want: { wood: 1 } });
+  action(g, 'p0', 'endTurn');
+  assert.deepEqual(g.tradeOffers, []);
+  conservation(g);
+});
+
+test('a saved match with one legacy offer can still complete that trade', () => {
+  const g = ready();
+  give(g, 'p0', 'wood', 1);
+  give(g, 'p1', 'ore', 1);
+  action(g, 'p0', 'offerTrade', { give: { wood: 1 }, want: { ore: 1 } });
+  const { declinedBy, ...legacy } = g.tradeOffers[0];
+  delete g.tradeOffers;
+  g.tradeOffer = legacy;
+  assert.deepEqual(viewGame(g, 'p1').tradeOffers, [legacy]);
+  assert.deepEqual(viewGame(g, 'p1').tradeOffer, legacy);
   action(g, 'p1', 'acceptTrade');
-  assert.equal(g.players[1].resources.wood, beforeWood + 2); assert.equal(g.players[0].resources.ore, beforeOre + 1); assert.equal(g.tradeOffer, null);
+  assert.equal(g.tradeOffer, undefined);
+  assert.deepEqual(g.tradeOffers, []);
   conservation(g);
 });
 

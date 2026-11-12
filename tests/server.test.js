@@ -84,3 +84,46 @@ test('six clients can join, ready, start an expanded match and synchronize initi
   assert.equal(placements, 24);
   for (const client of clients) { await call(client, 'getDirectory'); assert.equal(client.lobby.game.phase, 'roll'); }
 });
+
+test('a recipient can decline a pending offer during another player’s turn', async t => {
+  const server = await createAppServer({ port: 0, testMode: true, persistence: false });
+  const clients = [];
+  t.after(async () => { clients.forEach(c => c.disconnect()); await server.close(); });
+  for (let i = 0; i < 3; i++) clients.push(await connect(server.port));
+  const [host, ...guests] = clients;
+  await call(host, 'createLobby', { playerName: 'Ada', settings: { turnSeconds: 0 } });
+  const id = host.lobby.id;
+  for (const [i, guest] of guests.entries()) {
+    await call(guest, 'joinLobby', { id, playerName: `Guest ${i + 1}` });
+    await call(guest, 'setReady', { ready: true });
+  }
+  assert.equal((await call(host, 'startGame')).ok, true);
+  const room = server.lobbies.get(id);
+  const sender = clients.find(client => client.playerId === room.game.activePlayerId);
+  const [recipient, otherRecipient] = clients.filter(client => client !== sender);
+  // Seed the first action phase, leaving the recipients without any cards.
+  room.game.phase = 'action';
+  room.game.players.find(player => player.id === sender.playerId).resources.wood = 2;
+  room.game.bank.wood -= 2;
+  const send = (client, type, payload) => call(client, 'gameAction', { type, ...payload });
+  assert.equal((await send(sender, 'offerTrade', { give: { wood: 1 }, want: { ore: 1 } })).ok, true);
+  assert.equal((await send(sender, 'offerTrade', { give: { wood: 1 }, want: { brick: 1 } })).ok, true);
+  await call(recipient, 'getDirectory');
+  const [first, second] = recipient.lobby.game.tradeOffers.map(offer => offer.id);
+  assert.notEqual(recipient.lobby.game.activePlayerId, recipient.playerId);
+
+  assert.match((await send(recipient, 'endTurn')).error, /Wait for your turn/);
+  const declined = await send(recipient, 'declineTrade', { offerId: first });
+  assert.equal(declined.ok, true, declined.error);
+  assert.deepEqual(recipient.lobby.game.tradeOffers.map(offer => offer.id), [second]);
+  await call(otherRecipient, 'getDirectory');
+  assert.deepEqual(otherRecipient.lobby.game.tradeOffers.map(offer => offer.id), [first, second]);
+
+  room.game.phase = 'robber';
+  assert.equal((await send(recipient, 'acceptTrade', { offerId: second })).ok, false);
+  assert.equal((await send(recipient, 'declineTrade', { offerId: second })).ok, true, 'declining need not wait for the robber to move');
+  assert.deepEqual(recipient.lobby.game.tradeOffers, []);
+  assert.equal(room.game.activePlayerId, sender.playerId);
+  assert.equal(room.game.phase, 'robber');
+  assert.equal(room.game.players.find(player => player.id === sender.playerId).resources.wood, 2);
+});

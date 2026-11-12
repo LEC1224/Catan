@@ -44,9 +44,14 @@ test('bot policy trades and discards outside its turn without opponent private h
   const g = createGame([{ id: 'human' }, { id: 'bot' }], { seed: 'policy' });
   g.phase = 'action'; g.activePlayerId = 'human';
   g.players[1].resources.wood = 4;
-  g.tradeOffer = { id: 'offer', from: 'human', give: { wood: 0, brick: 2, wool: 0, wheat: 0, ore: 0 }, want: { wood: 1, brick: 0, wool: 0, wheat: 0, ore: 0 } };
+  g.tradeOffers = [
+    { id: 'bad', from: 'human', give: { wood: 1 }, want: { ore: 3 }, declinedBy: [] },
+    { id: 'offer', from: 'human', give: { brick: 2 }, want: { wood: 1 }, declinedBy: [] },
+  ];
   const view = viewGame(g, 'bot'); assert.equal(view.players[0].resources, null);
-  assert.equal(chooseBotAction(view, 'bot').type, 'acceptTrade');
+  assert.deepEqual(chooseBotAction(view, 'bot'), { type: 'acceptTrade', offerId: 'offer' });
+  g.tradeOffers.pop();
+  assert.deepEqual(chooseBotAction(viewGame(g, 'bot'), 'bot'), { type: 'declineTrade', offerId: 'bad' });
   g.phase = 'discard'; g.discardRequired = { bot: 2 };
   const discard = chooseBotAction(viewGame(g, 'bot'), 'bot');
   assert.deepEqual(discard, { type: 'discard', resources: { wood: 2, brick: 0, wool: 0, wheat: 0, ore: 0 } });

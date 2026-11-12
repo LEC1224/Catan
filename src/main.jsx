@@ -265,6 +265,10 @@ function App() {
         setError("Connection lost. Reconnecting…");
         return resolve(false);
       }
+      if (event === "gameAction" && payload.type === "declineTrade" && !Array.isArray(lobby?.game?.tradeOffers)) {
+        setError("Restart the game server and reload this page to decline trade offers.");
+        return resolve(false);
+      }
       setBusy(event);
       socket.timeout(10000).emit(event, payload, (err, result) => {
         setBusy("");
@@ -1862,7 +1866,7 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                   : mode
                     ? `Choose a highlighted ${mode === "road" ? "edge" : "location"} for your ${mode}.`
                     : "Trade or build, then end your turn.";
-  const offered = game.tradeOffer,
+  const offered = game.tradeOffers?.[0] ?? game.tradeOffer,
     offerOwner = game.players.find((p) => p.id === offered?.from),
     canAccept =
       offered &&
@@ -2148,16 +2152,21 @@ function Game({ lobby, meId, command, busy, onHelp }) {
                 </div>
               </div>
               {offered.from === meId ? (
-                <Button variant="outline" onClick={() => action("cancelTrade")}>
+                <Button variant="outline" onClick={() => action("cancelTrade", { offerId: offered.id })}>
                   Cancel offer
                 </Button>
               ) : (
-                <Button
-                  disabled={!canAccept}
-                  onClick={() => action("acceptTrade")}
-                >
-                  Accept trade
-                </Button>
+                <>
+                  <Button variant="outline" disabled={!!busy} onClick={() => action("declineTrade", { offerId: offered.id })}>
+                    Decline
+                  </Button>
+                  <Button
+                    disabled={!canAccept || !!busy}
+                    onClick={() => action("acceptTrade", { offerId: offered.id })}
+                  >
+                    Accept trade
+                  </Button>
+                </>
               )}
             </div>
           )}
