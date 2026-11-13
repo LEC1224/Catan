@@ -7,7 +7,7 @@ A standalone, real-time multiplayer Catan proof of concept. React renders the cl
 Requires Node.js 22 or newer.
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
@@ -72,14 +72,29 @@ Snake-order placement and second-settlement income; settlements/cities/roads and
 ## Development
 
 ```sh
-npm test
-npm run build
+npm run check
 ```
 
+This runs the Node test suite and production build. Run a focused suite with `node --test tests/bot-strategy.test.js` (or another test file). The GitHub Actions workflow runs the same check on Node 22 and 24 when changes are pushed or proposed in a pull request.
+
+For repeatable CPU checks and complete bot games:
+
+```sh
+npm run benchmark:engine
+npm run benchmark:bots
+npm run simulate:bots
+```
+
+Benchmarks use fixed positions, warm-up and median samples. Compare on the same machine and Node version without competing workloads; the numbers are CPU timings, not FPS or skill ratings. Both benchmark scripts accept an optional module path for a saved baseline implementation. Simulations use the real masked browser policy, including finite/unlimited stock checks. A map seed reproduces the board, not the random dice or card draws. `scripts/simulate.js` remains a compatibility entry point for the same policy.
+
+- [AGENTS.md](AGENTS.md): code map, focused checks and invariants for contributors and coding agents.
 - `server/game.js`: game state, rules, legal targets, personalized views and timers.
 - `server/index.js`: guest sessions, lobby directory, permissions, sockets and persistence.
+- `shared/game-constants.js`: resource order and build costs shared by rules, UI and bot plans.
+- `shared/`: common map, trade, team and replay rules; no server/browser dependencies.
 - `src/`: React client, interactive SVG board and styles.
 - `tests/`: rules and real Socket.IO multiplayer tests.
+- `tests/helpers/socket-client.js`: shared multiplayer test connections, requests and waits.
 - `public/assets/`: generated illustrations used by the application.
 - `src/audio/`: recorded sound effects and [source credits](src/audio/README.md).
 - `ARTWORK.md`: image prompts and provenance.
@@ -99,11 +114,13 @@ Bot decisions run in a Web Worker in the **host's browser**, not on the server. 
 
 These are heuristic difficulty levels, not calibrated skill ratings or full Monte Carlo search. All levels can play a complete game, including setup, discards, robber/theft, development cards, bank/port trades, player trades and paired turns. Bot offers give players six seconds to respond. Bots use only their own masked game view; the difficulty never grants extra resources or knowledge.
 
+Bots compare affordable builds with complete bank-exchange plans and keep the chosen build's ingredients through the exchanges. Normal and Hard preserve affordable settlements or cities when discarding if the remaining hand can hold the full cost. Immediate winning builds take priority over playing another development card. Idle workers wait for a new game revision or their trade deadline instead of polling unchanged positions.
+
 The server retains authority over dice, cards, rules and state. Bot actions require the current host's designated browser connection, a controller lease, match ID and current game revision. Other clients cannot submit bot actions, and stale/duplicate moves are rejected. The server does not choose timeout moves for bots; human timeout handling still applies.
 
 **Trust boundary:** the host's browser receives each bot's private hand so it can compute decisions. These hands are kept out of the normal UI, and each bot is evaluated separately, but the host can inspect them with developer tools. Human opponents' hands remain hidden. This design assumes a trusted friends-only host.
 
-Implementation: `src/bots/strategy.js` contains the policy; `worker.js` evaluates masked observations; `controller.js` runs and reconnects the browser worker. Bot memory is lightweight and resets on reload/control handoff; saved matches retain the game state. Run `node scripts/simulate-bots.js` for complete headless games using the same browser policy.
+Implementation: `src/bots/strategy.js` contains the policy; `worker.js` evaluates masked observations; `controller.js` runs and reconnects the browser worker. Bot memory is lightweight and resets on reload/control handoff; saved matches retain the game state. Run `npm run simulate:bots` for complete headless games using the same browser policy.
 
 Bots recognize teammates when considering trades, robber targets, Monopoly and competing for awards. They still use only their own masked view. These team heuristics are not a coordinated planning system.
 

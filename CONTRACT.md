@@ -1,6 +1,6 @@
 # Shared implementation contract
 
-Local standalone Vite + React, Express + Socket.IO. ES modules JavaScript. Root owns package.json, server/index.js and integration tests/docs. Engine agent owns server/game.js and tests/game.test.js. UI agent owns index.html, vite.config.js, src/*. Assets agent owns public/assets and ARTWORK.md only.
+Local standalone Vite + React, Express + Socket.IO. ES modules JavaScript. See `AGENTS.md` for the code map, verification commands and development invariants. Temporary worker assignments belong in the current task, not in this persistent contract.
 
 ## Socket protocol
 All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser generates UUID token, persists localStorage, passes handshake auth `{token}`; server owns player identity derived from token. Events:
@@ -45,7 +45,11 @@ All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser 
 `unlimitedResourceCards` defaults to false. When true, the bank fulfills all eligible production and resource requests. Build costs, trade rates, and hand rules still apply.
 
 ## Engine API (server/game.js)
-Exports `createGame(players,settings)`, `action(game,playerId,type,payload={})`, `viewGame(game,playerId)`, `tick(game,now=Date.now(),excludedPlayers=[],onMove?)`. Mutate game in action/tick, throw Error for invalid. tick returns boolean changed. Its optional callback receives `(playerId,type,previousLogSequence)` after each successful automatic action. The server excludes bot IDs from timeout decisions, including mixed human/bot discards. Engine keeps plain JSON serializable state. Players have id,name,color. No socket dependencies.
+Exports `createGame(players,settings)`, `nextGame(game,playerId,type,payload={})`, `action(game,playerId,type,payload={})`, `viewGame(game,playerId)`, `needsTick(game,now=Date.now(),excludedPlayers=[])`, and `tick(game,now=Date.now(),excludedPlayers=[],onMove?)`.
+
+`nextGame` returns an isolated candidate and leaves the input unchanged, including on invalid commands. The server captures the candidate's public recording frame and then commits it. `action` uses the same validation and replaces the original game's contents only after success, preserving its root identity for callers. Invalid commands throw `Error`. `viewGame` masks private fields before cloning and returns a detached personalized snapshot. Costs/resource order are defined once in `shared/game-constants.js`.
+
+`needsTick` is a read-only eligibility check for deadline, phase and excluded bot players, shared with `tick` so the server can avoid copying idle games. `tick` mutates the game and returns whether it changed. Its optional callback receives `(playerId,type,previousLogSequence)` after each successful automatic action. The server excludes bot IDs from timeout decisions, including mixed human/bot discards. Engine state stays plain JSON serializable; players have id,name,color. No socket dependencies.
 
 ## Match review
 In team matches, score timeline samples also contain `teamTotals` in Team A, Team B order, and `leaders` indexes those teams. Individual `totals` and point breakdowns remain available. Victory moments name the winning team. The final game includes `winnerTeamId`; `winnerId` retains the active player who triggered the win for compatibility. Both winners receive the victory sound and result highlighting. Live clients compute team totals from visible points, so no teammate's hidden point cards are exposed before the match ends.
@@ -71,4 +75,4 @@ Actions `placeSettlement` {vertexId}, `placeRoad` {edgeId}, `upgradeCity` {verte
 
 The active player can open up to six player offers during a normal action phase. The first eligible recipient to accept a given offer completes it. Recipients can decline an open offer at any point in the sender's turn, including while the sender resolves the robber. Declining hides that offer for the recipient; it closes once everyone declines. Only the sender can withdraw. Offers do not reserve cards and close when the sender can no longer afford them or the turn ends.
 
-Use `/assets/terrain-atlas.png` AI raster sheet 3 columns × 2 rows wood, wheat, wool / brick, ore, desert; use SVG image positioned and clipped per hex, or CSS background-position card illustrations. `/assets/island-hero.png` scenic landing image. Assets may arrive later; gradient fallbacks during implementation. UI warm cream parchment, dark teal sea, brass gold, muted realistic painterly illustrations. Full-screen lobby landing and spacious game board. No ChatGPT integration.
+Board and card artwork lives in `public/assets/`; asset provenance is in `ARTWORK.md`. Terrain/port geometry is static within a match and may be cached by `matchId`. Buildings, roads, robber and legal targets must always use the current observation. The browser controller evaluates new game revisions, sleeping on idle observations; an active bot offer supplies a timed wake-up for its six-second response window.
