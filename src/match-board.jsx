@@ -6,6 +6,8 @@ import { RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
 
 const DIMENSIONS = { x: 400, y: 280, width: 800, height: 560, fullWidth: 800, fullHeight: 560 };
+const OCEAN_TILE_WIDTH = 1536, OCEAN_TILE_HEIGHT = 1024;
+const OCEAN_BLEED = 8; // World units beyond the viewport for the animated drift.
 const ROOFS = {
   settlement: "M145 390 244 262 266 242 272 246 375 206 456 155 485 156 588 349 575 378 367 466 269 294 168 413 145 418Z",
   city: "M849 219 883 194 910 155 928 179 965 207 961 235 895 246Z M839 315 1015 258 1065 256 1098 321 1075 347 950 381Z M1209 200 1249 185 1280 228 1255 255 1221 245Z M1183 323 1242 268 1290 262 1346 304 1312 356 1211 348Z M1115 405 1169 341 1234 357 1270 406 1223 442 1151 441Z M1284 402 1353 365 1383 391 1362 425 1327 431Z M784 425 825 381 932 409 957 437 930 453 875 469Z M986 459 1018 406 1149 405 1165 448 1147 479 1012 475Z M901 528 929 486 998 516 978 551Z M1193 522 1243 472 1303 460 1327 495 1254 540Z",
@@ -55,7 +57,7 @@ function Coast({ shore, ids }) {
     <g className="island-coast" aria-hidden="true" pointerEvents="none">
       <path d={shore} fill="#17342e" stroke="#5b9c91" strokeWidth="63" strokeOpacity=".22" filter={`url(#${ids}-shoals)`} />
       <path d={shore} fill="#4e8b7d" stroke="#5eaa99" strokeWidth="30" strokeOpacity=".36" filter={`url(#${ids}-shore-warp)`} />
-      <path d={shore} fill="none" stroke="#c0d4b7" strokeWidth="16" strokeOpacity=".36" strokeDasharray="31 8 11 21 53 5" filter={`url(#${ids}-shore-warp)`} />
+      <path className="shore-breakers" d={shore} fill="none" stroke="#c0d4b7" strokeWidth="16" strokeOpacity=".36" strokeDasharray="31 8 11 21 53 5" filter={`url(#${ids}-shore-warp)`} />
       <path d={shore} fill="#b99261" stroke="#ead1a0" strokeWidth="4" filter={`url(#${ids}-shore-warp)`} />
       <path d={shore} fill={`url(#${ids}-sand)`} opacity=".55" />
       <path d={shore} fill="none" stroke="#f1e5c1" strokeWidth="1.6" strokeOpacity=".71" strokeDasharray="7 5 16 8 24 13" filter={`url(#${ids}-shore-warp)`} />
@@ -245,6 +247,29 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
   );
 }
 
+function BoardOcean({ viewport, viewBox, worldTransform, x, y, scale }) {
+  const tileId = useId();
+  const left = -x / scale - OCEAN_BLEED, right = (viewport.fullWidth - x) / scale + OCEAN_BLEED;
+  const top = -y / scale - OCEAN_BLEED, bottom = (viewport.fullHeight - y) / scale + OCEAN_BLEED;
+  const tiles = [];
+  // Mirror neighboring copies so the painted edges meet at every zoom level.
+  for (let row = Math.floor(top / OCEAN_TILE_HEIGHT + .5); row <= Math.floor(bottom / OCEAN_TILE_HEIGHT + .5); row++) {
+    for (let col = Math.floor(left / OCEAN_TILE_WIDTH + .5); col <= Math.floor(right / OCEAN_TILE_WIDTH + .5); col++) {
+      tiles.push(<use key={`${col},${row}`} href={`#${tileId}`}
+        transform={`translate(${col * OCEAN_TILE_WIDTH},${row * OCEAN_TILE_HEIGHT}) scale(${col % 2 ? -1 : 1},${row % 2 ? -1 : 1})`} />);
+    }
+  }
+  return (
+    <svg className="map-ocean" viewBox={viewBox} aria-hidden="true" focusable="false">
+      <defs>
+        <image id={tileId} href="/assets/ocean-surface.webp" x={-OCEAN_TILE_WIDTH / 2} y={-OCEAN_TILE_HEIGHT / 2}
+          width={OCEAN_TILE_WIDTH} height={OCEAN_TILE_HEIGHT} />
+      </defs>
+      <g transform={worldTransform}><g className="ocean-surface">{tiles}</g></g>
+    </svg>
+  );
+}
+
 function BoardCamera({ bounds, seed, children }) {
   const svg = useRef(null), fit = useRef(null), plus = useRef(null);
   const [viewport, setViewport] = useState(DIMENSIONS);
@@ -333,17 +358,21 @@ function BoardCamera({ bounds, seed, children }) {
       else zoom(event.key === "-" ? 1 / 1.2 : 1.2);
     }
   }
-  const scale = Math.min(viewport.width / bounds.width, viewport.height / bounds.height) * camera.zoom;
+  const scale = Math.max(.05, Math.min(viewport.width / bounds.width, viewport.height / bounds.height) * camera.zoom);
+  const x = viewport.x + camera.x - bounds.x * scale, y = viewport.y + camera.y - bounds.y * scale;
+  const viewBox = `0 0 ${viewport.fullWidth} ${viewport.fullHeight}`;
+  const worldTransform = `translate(${x},${y}) scale(${scale})`;
   return (
     <div className="board-frame">
       <div className="map-fit" ref={fit} aria-hidden="true" />
-      <svg ref={svg} className={`game-board${dragging ? " dragging" : ""}`} viewBox={`0 0 ${viewport.fullWidth} ${viewport.fullHeight}`}
+      <BoardOcean viewport={viewport} viewBox={viewBox} worldTransform={worldTransform} x={x} y={y} scale={scale} />
+      <svg ref={svg} className={`game-board${dragging ? " dragging" : ""}`} viewBox={viewBox}
         tabIndex="0" aria-label="Interactive Catan board" aria-description="Drag or use arrow keys to pan. Scroll, pinch, or use plus and minus to zoom."
         onKeyDown={boardKeys} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerEnd} onPointerCancel={pointerEnd}
         onLostPointerCapture={(event) => { if (event.target === event.currentTarget) pointerEnd(event); }}
         onPointerLeave={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) pointerEnd(event); }}
         onClickCapture={(event) => { if (dragged.current && event.detail) { event.preventDefault(); event.stopPropagation(); dragged.current = false; } }}>
-        <g className="map-world" transform={`translate(${viewport.x + camera.x},${viewport.y + camera.y}) scale(${Math.max(.05, scale)}) translate(${-bounds.x},${-bounds.y})`}>
+        <g className="map-world" transform={worldTransform}>
           {children}
         </g>
       </svg>

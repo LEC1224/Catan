@@ -14,9 +14,10 @@
   background:
     linear-gradient(180deg, #0c201faa, transparent 18%, transparent 64%, #0c1e1ce8),
     radial-gradient(ellipse at 46% 42%, transparent 40%, #0b201e68 100%),
-    url("/assets/ocean-surface.webp") center / cover #173b3b;
+    var(--match-backdrop, none) center / cover #173b3b;
   color: var(--match-cream);
 }
+.match-shell:has(> .match-results:not(.match-replay)) { --match-backdrop: url("/assets/ocean-surface.webp"); }
 .match-shell:fullscreen { width: 100%; height: 100%; }
 .match-shell::backdrop { background: #172c2b; }
 .match-shell :focus-visible { outline: 2px solid #f3ce8c; outline-offset: 2px; }
@@ -358,6 +359,25 @@
 .turn-clock.urgent .clock-track i { background: #ef916e; }
 .match-stage .board-frame { position: absolute; inset: 0; overflow: hidden; }
 .map-fit { position: absolute; inset: 5px var(--map-right) 5px var(--map-left); visibility: hidden; pointer-events: none; }
+.map-ocean {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mask-image: linear-gradient(transparent, #000 24px, #000 calc(100% - 32px), transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ocean-surface { animation: ocean-swell 18s ease-in-out infinite; }
+  .shore-breakers { animation: shore-breakers 7s ease-in-out infinite; }
+}
+@keyframes ocean-swell {
+  25% { transform: translate(4px, -2px); }
+  75% { transform: translate(-3px, 2px); }
+}
+@keyframes shore-breakers {
+  50% { opacity: .72; }
+}
 .match-stage .game-board {
   display: block;
   position: absolute;
