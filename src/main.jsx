@@ -647,7 +647,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
             canBuild={dev ? {} : canBuild} busy={!!busy} onAction={action} resourceMeta={META} />
         </section>
         {offers.length > 0 && <TradeOffers offers={offers} game={game} me={me} busy={!!busy} onAction={action} resourceTypes={RES} resourceMeta={META} />}
-        <aside id="match-activity" className="game-sidebar" aria-label="Game activity" hidden={!activityOpen}>
+        <aside id="match-activity" className="game-sidebar" data-view={sidebar} aria-label="Game activity" hidden={!activityOpen}>
           <div className="match-activity-tabs" role="group" aria-label="Game activity view">
             <button
               className="match-command"

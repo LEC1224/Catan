@@ -436,6 +436,11 @@
   box-shadow: 0 3px 13px #081e1e7a;
 }
 .match-stage .game-sidebar[hidden] { display: none; }
+.match-stage .game-sidebar[data-view="chat"] {
+  width: min(280px, var(--offer-width));
+  height: clamp(220px, 55%, 340px);
+  max-height: calc(100% - 18px);
+}
 .match-activity-tabs {
   display: flex;
   flex: none;
@@ -486,8 +491,8 @@
 .match-stage .game-sidebar .chat-empty { color: var(--match-muted); font-size: 12px; }
 .match-stage .game-sidebar .chat-messages > p > strong { color: var(--match-gold); font-size: 11px; }
 .match-stage .game-sidebar .chat-messages > p > span { color: var(--match-cream); font-size: 12px; }
-.match-stage .game-sidebar .chat-input { border-color: #716245; background: #15241e; }
-.match-stage .game-sidebar .chat-input input { color: #f2e3bf; font-size: 12px; padding: 7px 6px; }
+.match-stage .game-sidebar .chat-input { flex: none; border-color: #716245; background: #15241e; }
+.match-stage .game-sidebar .chat-input input { min-width: 0; flex: 1; color: #f2e3bf; font-size: 12px; padding: 7px 6px; }
 .match-stage .game-sidebar .chat-input input::placeholder { color: var(--match-muted); }
 .match-stage .game-sidebar .chat-input button { color: var(--match-gold); }
 
