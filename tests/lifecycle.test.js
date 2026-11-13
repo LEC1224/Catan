@@ -1,37 +1,11 @@
+import { call, connect, eventually } from './helpers/socket-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { io } from 'socket.io-client';
 import { createAppServer } from '../server/index.js';
-
-const call = (socket, event, payload = {}) => new Promise((resolve, reject) => {
-  socket.timeout(3000).emit(event, payload, (error, response) => error ? reject(error) : resolve(response));
-});
-
-async function connect(port, token = randomUUID()) {
-  const socket = io(`http://127.0.0.1:${port}`, {
-    auth: { token }, transports: ['websocket'], forceNew: true, reconnection: false,
-  });
-  socket.token = token;
-  socket.on('lobby', lobby => { socket.lobby = lobby; });
-  const session = await new Promise((resolve, reject) => {
-    socket.once('session', resolve);
-    socket.once('connect_error', reject);
-  });
-  socket.playerId = session.playerId;
-  await call(socket, 'getDirectory');
-  return socket;
-}
-
-async function eventually(predicate, description) {
-  const until = Date.now() + 2000;
-  while (!predicate() && Date.now() < until) await delay(5);
-  assert.ok(predicate(), description);
-}
 
 async function startTwoPlayerGame(server, clients, settings = {}) {
   const host = await connect(server.port), guest = await connect(server.port);

@@ -1,17 +1,7 @@
+import { call, connect } from './helpers/socket-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
-import { io } from 'socket.io-client';
 import { createAppServer, validateSettings } from '../server/index.js';
-
-const call = (client, event, payload = {}) => new Promise((resolve, reject) => client.timeout(3000).emit(event, payload, (error, result) => error ? reject(error) : resolve(result)));
-async function connect(port, token = randomUUID()) {
-  const socket = io(`http://127.0.0.1:${port}`, { auth: { token }, transports: ['websocket'], forceNew: true });
-  socket.on('lobby', lobby => { socket.lobby = lobby; });
-  const identity = await new Promise((resolve, reject) => { socket.once('session', resolve); socket.once('connect_error', reject); });
-  socket.playerId = identity.playerId; socket.token = token;
-  return socket;
-}
 
 test('new lobby settings default to the preset for the selected player limit', () => {
   for (const [maxPlayers, expected] of [

@@ -1,26 +1,17 @@
+import { call as rpc, connect } from './helpers/socket-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import crypto, { randomUUID } from 'node:crypto';
+import crypto from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { mkdtemp, rm, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { io } from 'socket.io-client';
 import { createAppServer } from '../server/index.js';
 import { action, createGame, tick, viewGame } from '../server/game.js';
 import { appendFrame, beginRecording, captureMove, lastLogSequence, matchSummary } from '../server/match-recording.js';
 import { replayBoard } from '../shared/match-replay.js';
 
 const players = [{ id: 'ada', name: 'Ada', color: '#ce6849' }, { id: 'birch', name: 'Birch', color: '#3b8292' }];
-const rpc = (client, event, payload = {}) => client.timeout(3000).emitWithAck(event, payload);
-async function connect(server, token = randomUUID()) {
-  const client = io(`http://127.0.0.1:${server.port}`, { auth: { token }, transports: ['websocket'], forceNew: true, reconnection: false });
-  client.on('lobby', snapshot => { client.lobby = snapshot; });
-  const { playerId } = await new Promise((resolve, reject) => { client.once('session', resolve); client.once('connect_error', reject); });
-  Object.assign(client, { playerId, token });
-  return client;
-}
-
 function record(game, recording, id, type, payload) {
   const seq = lastLogSequence(game);
   action(game, id, type, payload);
@@ -119,7 +110,7 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
     await rm(options.dataFile, { force: true });
     await rmdir(dir);
   });
-  const host = await connect(server), guest = await connect(server), outsider = await connect(server);
+  const host = await connect(server.port), guest = await connect(server.port), outsider = await connect(server.port);
   clients.push(host, guest, outsider);
   const { id } = await rpc(host, 'createLobby', { playerName: 'Ada', settings: { turnSeconds: 0, victoryPoints: 3, extendedBoard: true, seed: 'recording' } });
   assert.ok((await rpc(guest, 'joinLobby', { id, playerName: 'Birch' })).ok);
@@ -212,7 +203,7 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   clients.forEach(client => client.disconnect());
   await server.close();
   server = await createAppServer(options);
-  const returningHost = await connect(server, host.token), returningGuest = await connect(server, guest.token);
+  const returningHost = await connect(server.port, host.token), returningGuest = await connect(server.port, guest.token);
   clients.push(returningHost, returningGuest);
   await rpc(returningHost, 'getDirectory');
   await rpc(returningGuest, 'getDirectory');

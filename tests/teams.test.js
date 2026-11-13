@@ -1,10 +1,9 @@
+import { call, connect } from './helpers/socket-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { io } from 'socket.io-client';
 import { createGame, action, viewGame } from '../server/game.js';
 import { createAppServer, validateSettings } from '../server/index.js';
 import { appendFrame, beginRecording, captureMove, lastLogSequence, matchSummary, viewReplay } from '../server/match-recording.js';
@@ -141,17 +140,6 @@ test('bots avoid robbing partners and can trade with a partner who has a high sc
 for (const map of ['classic', 'narrows', 'sweden']) test(`bots complete a legal 2v2 match on ${map}`, () => {
   assert.ok(simulateBots(4, 'normal', { map, mode: 'teams' }).winner);
 });
-
-const call = (client, event, payload = {}) => new Promise((resolve, reject) => client.timeout(3000).emit(event, payload, (error, result) => error ? reject(error) : resolve(result)));
-async function connect(port, token = randomUUID()) {
-  const socket = io(`http://127.0.0.1:${port}`, { auth: { token }, transports: ['websocket'], forceNew: true });
-  socket.on('lobby', lobby => { socket.lobby = lobby; });
-  socket.token = token;
-  const identity = await new Promise((resolve, reject) => { socket.once('session', resolve); socket.once('connect_error', reject); });
-  socket.playerId = identity.playerId;
-  await call(socket, 'getDirectory');
-  return socket;
-}
 
 test('multiplayer teams enforce host authority, readiness, balanced seating, and persist across restarts', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'catan-teams-'));
