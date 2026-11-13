@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
-import { io } from 'socket.io-client';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,19 +8,8 @@ import { createAppServer } from '../server/index.js';
 import { createGame, viewGame, tick } from '../server/game.js';
 import { chooseBotAction } from '../src/bots/strategy.js';
 import { simulateBots } from '../scripts/simulate-bots.js';
+import { call, connect, eventually } from './helpers/socket-client.js';
 
-const call = (s, event, payload = {}) => new Promise((resolve, reject) => s.timeout(3000).emit(event, payload, (e, r) => e ? reject(e) : resolve(r)));
-async function connect(port, token = randomUUID()) {
-  const s = io(`http://127.0.0.1:${port}`, { auth: { token }, transports: ['websocket'], forceNew: true });
-  s.token = token; s.on('lobby', l => s.lobby = l); s.on('botState', state => s.botState = state);
-  const session = await new Promise((resolve, reject) => { s.once('session', resolve); s.once('connect_error', reject); });
-  s.playerId = session.playerId; await call(s, 'getDirectory'); return s;
-}
-async function eventually(fn) {
-  const until = Date.now() + 2000;
-  while (!fn() && Date.now() < until) await delay(10);
-  assert.ok(fn(), 'condition reached');
-}
 function botPayload(s, botId, action) {
   const { matchId, lease, revision } = s.botState;
   return { matchId, lease, revision, botId, action };
