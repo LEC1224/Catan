@@ -3,6 +3,8 @@ import { MessageSquare, Send } from "lucide-react";
 
 export function Chat({ lobby, command, compact = false }) {
   const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const inFlight = useRef(false), draftVersion = useRef(0);
   const messages = useRef(null);
   const lastMessage = lobby.messages?.at(-1);
   useEffect(() => {
@@ -29,7 +31,20 @@ export function Chat({ lobby, command, compact = false }) {
         className="chat-input"
         onSubmit={async (event) => {
           event.preventDefault();
-          if (text.trim() && (await command("chat", { text: text.trim() }))) setText("");
+          const message = text.trim();
+          if (!message || inFlight.current) return;
+          const version = draftVersion.current;
+          inFlight.current = true;
+          setSending(true);
+          try {
+            // A delayed acknowledgement belongs to the sent draft, not text typed meanwhile.
+            if (await command("chat", { text: message })) {
+              if (draftVersion.current === version) setText("");
+            }
+          } finally {
+            inFlight.current = false;
+            setSending(false);
+          }
         }}
       >
         <input
@@ -37,9 +52,9 @@ export function Chat({ lobby, command, compact = false }) {
           placeholder="Message…"
           value={text}
           maxLength={300}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => { draftVersion.current++; setText(event.target.value); }}
         />
-        <button type="submit" aria-label="Send message" disabled={!text.trim()}>
+        <button type="submit" aria-label={sending ? "Sending message" : "Send message"} disabled={sending || !text.trim()}>
           <Send size={16} aria-hidden="true" />
         </button>
       </form>
