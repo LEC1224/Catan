@@ -63,6 +63,30 @@ test('board seeds reproduce terrain/numbers/ports, balanced reds never share an 
   }
 });
 
+test('locking the desert centers the starting robber and leaves the second desert randomized', () => {
+  for (const extendedBoard of [false, true]) {
+    const unlockedDeserts = new Set(), otherDeserts = new Set();
+    for (let i = 0; i < 12; i++) {
+      const settings = { seed: `center-${i}`, extendedBoard };
+      const unlocked = make(3, settings);
+      const locked = make(3, { ...settings, lockDesertToCenter: true });
+      const { hexes, edges } = locked.board;
+      const desert = hexes.find(h => h.id === locked.robberHexId);
+      assert.equal(desert.y, 0);
+      assert.equal(desert.x, extendedBoard ? -Math.sqrt(3) * 30 : 0);
+      assert.equal(desert.terrain, 'desert');
+      assert.equal(desert.number, null);
+      assert.deepEqual(hexes.map(h => h.terrain).sort(), unlocked.board.hexes.map(h => h.terrain).sort());
+      assert.equal(edges.some(e => e.hexIds.length === 2 && e.hexIds.every(id => [6, 8].includes(hexes.find(h => h.id === id).number))), false);
+      assert.deepEqual(locked.board, make(3, { ...settings, lockDesertToCenter: true }).board);
+      unlockedDeserts.add(unlocked.robberHexId);
+      if (extendedBoard) otherDeserts.add(hexes.find(h => h.terrain === 'desert' && h !== desert).id);
+    }
+    assert.ok(unlockedDeserts.size > 1);
+    if (extendedBoard) assert.ok(otherDeserts.size > 1);
+  }
+});
+
 test('five and six players retain expanded supplies when the small board is selected', () => {
   for (const count of [5, 6]) {
     const g = make(count, { extendedBoard: false });

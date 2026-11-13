@@ -34,6 +34,7 @@ test('settings reject invalid values', () => {
   assert.throws(() => validateSettings({ turnSeconds: 5 }));
   assert.throws(() => validateSettings({ discardThreshold: '12' }));
   assert.throws(() => validateSettings({ extendedBoard: 'false' }));
+  assert.throws(() => validateSettings({ lockDesertToCenter: 'true' }));
 });
 
 test('real multiplayer server: lobby privacy, authority, readiness, masked state and reconnect', async t => {
@@ -44,12 +45,13 @@ test('real multiplayer server: lobby privacy, authority, readiness, masked state
   clients.push(a, b, c);
   assert.equal((await call(a, 'createLobby', { playerName: 'Ada', name: 'North coast', settings: { turnSeconds: 0 } })).ok, true);
   const id = a.lobby.id;
+  assert.equal(a.lobby.settings.lockDesertToCenter, false);
   let listings = await (await fetch(`http://127.0.0.1:${server.port}/api/lobbies`)).json();
   assert.equal(listings.length, 1);
   assert.equal((await call(b, 'joinLobby', { id, playerName: 'Birch' })).ok, true);
-  assert.equal((await call(b, 'configureLobby', { settings: { victoryPoints: 4 } })).ok, false);
+  assert.equal((await call(b, 'configureLobby', { settings: { lockDesertToCenter: true } })).ok, false);
   assert.equal((await call(a, 'startGame')).ok, false, 'cannot start with an unready guest');
-  assert.equal((await call(a, 'configureLobby', { isPrivate: true, settings: { maxPlayers: 6, extendedBoard: false } })).ok, true);
+  assert.equal((await call(a, 'configureLobby', { isPrivate: true, settings: { maxPlayers: 6, extendedBoard: false, lockDesertToCenter: true } })).ok, true);
   listings = await (await fetch(`http://127.0.0.1:${server.port}/api/lobbies`)).json();
   assert.equal(listings.length, 0, 'private lobbies never appear in directory');
   assert.equal((await call(c, 'joinLobby', { id, playerName: 'Ada' })).ok, false, 'duplicate names rejected');
@@ -59,6 +61,8 @@ test('real multiplayer server: lobby privacy, authority, readiness, masked state
   assert.equal((await call(b, 'setReady', { ready: true })).ok, true);
   assert.equal((await call(a, 'startGame')).ok, true);
   assert.equal(a.lobby.game.board.hexes.length, 19, 'small board override respected');
+  assert.equal(b.lobby.settings.lockDesertToCenter, true);
+  assert.equal(a.lobby.game.board.hexes.find(h => h.x === 0 && h.y === 0).id, a.lobby.game.robberHexId);
   for (const p of a.lobby.game.players) assert.equal(p.resources === null, p.id !== a.playerId);
   const before = JSON.stringify(server.lobbies.get(id).game);
   assert.equal((await call(b, 'gameAction', { type: 'placeSettlement', vertexId: 'not-a-real-vertex' })).ok, false);

@@ -644,7 +644,8 @@
   gap: 12px;
 }
 .board-options { gap: 9px; }
-.board-picker { margin-bottom: 14px; }
+.board-picker { margin-bottom: 3px; }
+.board-picker + .front-toggle { margin-bottom: 12px; }
 .board-choice {
   position: relative;
   display: block;

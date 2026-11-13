@@ -5,7 +5,7 @@ import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { wool: 1, wheat: 1, ore: 1 } };
-const DEFAULTS = { maxPlayers: 4, extendedBoard: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const fail = text => { throw new Error(text); };
@@ -28,11 +28,17 @@ function seededRandom(seed) {
   return n => { state += 0x6D2B79F5; let t = state; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return Math.floor(((t ^ t >>> 14) >>> 0) / 4294967296 * n); };
 }
 
+// The rows are symmetric; use the left of the two middle hexes on the expanded board.
+const centerHexIndex = tileCount => Math.floor((tileCount - 1) / 2);
+
 function buildBoard(settings) {
   const random = settings.seed ? seededRandom(settings.seed) : n => randomInt(n);
   const rows = settings.extendedBoard ? [3, 4, 5, 6, 5, 4, 3] : [3, 4, 5, 4, 3];
   const counts = settings.extendedBoard ? [6, 5, 6, 6, 5, 2] : [4, 3, 4, 4, 3, 1];
-  const terrains = shuffle([...RESOURCES, 'desert'].flatMap((r, i) => Array(counts[i]).fill(r)), random);
+  const terrains = [...RESOURCES, 'desert'].flatMap((r, i) => Array(counts[i]).fill(r));
+  if (settings.lockDesertToCenter) terrains.pop();
+  shuffle(terrains, random);
+  if (settings.lockDesertToCenter) terrains.splice(centerHexIndex(terrains.length + 1), 0, 'desert');
   const vertices = [], edges = [], hexes = [], vertexMap = new Map(), edgeMap = new Map();
   rows.forEach((length, row) => {
     for (let col = 0; col < length; col++) {
@@ -234,7 +240,8 @@ export function createGame(players, settings = {}) {
     bank: Object.fromEntries(RESOURCES.map(r => [r, expandedSupply ? 24 : 19])),
     developmentDeck: shuffle(deckTypes.flatMap(([type, n]) => Array.from({ length: n }, () => ({ id: randomUUID(), type })))), playedDevelopment: [],
     phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, dice: null,
-    robberHexId: board.hexes.find(h => h.terrain === 'desert').id, longestRoadHolder: null, largestArmyHolder: null,
+    robberHexId: (merged.lockDesertToCenter ? board.hexes[centerHexIndex(board.hexes.length)] : board.hexes.find(h => h.terrain === 'desert')).id,
+    longestRoadHolder: null, largestArmyHolder: null,
     log: [], pairedPlayer: false, primaryIndex: 0, setupOrder: [...players.map(p => p.id), ...players.map(p => p.id).reverse()], setupIndex: 0, setupVertexId: null,
     discardRequired: {}, stealTargets: [], tradeOffers: [], roadBuildingRemaining: 0, developmentPlayed: false,
   };

@@ -373,6 +373,7 @@ function SettingsPanel({ lobby, host, busy, command }) {
           </div>
         )}
         <BoardPicker expanded={settings.extendedBoard} onChange={(value) => change("extendedBoard", value)} disabled={disabled} />
+        <Toggle checked={settings.lockDesertToCenter} onChange={(value) => change("lockDesertToCenter", value)} label="Lock desert to center" disabled={disabled} />
         <div className="lobby-settings-grid">
           <SettingsSelect label="Player limit" value={settings.maxPlayers} options={PLAYER_COUNTS.filter((count) => count >= lobby.players.length)} disabled={disabled} onChange={(value) => change("maxPlayers", value)} />
           <SettingsSelect label="Points to win" value={settings.victoryPoints} options={Array.from({ length: 18 }, (_, i) => i + 3)} disabled={disabled} onChange={(value) => change("victoryPoints", value)} />
