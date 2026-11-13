@@ -2,13 +2,8 @@
 import { bankTradeRate, openTradeOffers, playerTradesAvailable, resourceStock } from '../../shared/trades.js';
 import { areTeammates, gameTeams, TEAM_MIN_POINTS } from '../../shared/teams.js';
 
-export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
-const COST = {
-  placeSettlement: { wood: 1, brick: 1, wool: 1, wheat: 1 },
-  upgradeCity: { wheat: 2, ore: 3 },
-  placeRoad: { wood: 1, brick: 1 },
-  buyDevelopment: { wool: 1, wheat: 1, ore: 1 },
-};
+import { RESOURCES, ACTION_COSTS as COST } from '../../shared/game-constants.js';
+export { RESOURCES } from '../../shared/game-constants.js';
 const empty = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const pays = (hand, cost) => RESOURCES.every(r => hand[r] >= (cost[r] || 0));

@@ -5,8 +5,8 @@ import { DEFAULT_TEAM_TARGET, gameTeams, TEAM_MIN_POINTS, teamSeating } from '..
 import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable, resourceStock } from '../shared/trades.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
-export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
-const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { wool: 1, wheat: 1, ore: 1 } };
+import { RESOURCES, COSTS } from '../shared/game-constants.js';
+export { RESOURCES } from '../shared/game-constants.js';
 const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);

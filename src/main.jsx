@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { Sheep } from "./sheep-icon.js";
 import { resourceName } from "../shared/resource-names.js";
+import { RESOURCES as RES, COSTS } from "../shared/game-constants.js";
 import { teamName } from "../shared/teams.js";
 import { TeamScores } from "./team-scores.jsx";
 import { gameLogText } from "./game-log-text.js";
@@ -65,7 +66,6 @@ import "./match.css";
 import "./match-trade.css";
 import "./match-framing.css";
 
-const RES = ["wood", "brick", "wool", "wheat", "ore"];
 const META = {
   wood: { name: "Wood", icon: Trees, color: "#42714d", tile: 0 },
   wheat: { name: "Wheat", icon: Wheat, color: "#ba9140", tile: 1 },
@@ -73,12 +73,6 @@ const META = {
   brick: { name: "Brick", icon: Package, color: "#b46c48", tile: 3 },
   ore: { name: "Ore", icon: Mountain, color: "#727d87", tile: 4 },
   desert: { name: "Desert", icon: Compass, color: "#c7ad75", tile: 5 },
-};
-const COSTS = {
-  road: { wood: 1, brick: 1 },
-  settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 },
-  city: { wheat: 2, ore: 3 },
-  development: { wool: 1, wheat: 1, ore: 1 },
 };
 function getToken() {
   let token = localStorage.getItem("catanToken");

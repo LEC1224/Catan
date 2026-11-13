@@ -1,5 +1,6 @@
 export const HOME_CAMERA = { x: 0, y: 0, zoom: 1 };
-const ART_TERRAINS = new Set(["wood", "brick", "wool", "wheat", "ore"]);
+import { RESOURCES } from "../shared/game-constants.js";
+const ART_TERRAINS = new Set(RESOURCES);
 
 // Use match data instead of Math.random so all players see the same artwork.
 function artRandom(seed) {
