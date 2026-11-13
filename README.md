@@ -10,6 +10,8 @@ Requires Node.js 22 or newer.
 npm install
 npm run dev
 ```
+
+Development mode restarts the server when its code changes.
 Open **http://localhost:3000**. The server listens on all network interfaces so other devices on the same network can use `http://YOUR-LAN-IP:3000` if the local firewall permits it. A localhost invite only works on the host computer; use the LAN address when copying invites for nearby devices.
 
 For an optimized local build:
