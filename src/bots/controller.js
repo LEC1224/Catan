@@ -5,8 +5,7 @@ export function attachBotController(socket, onError = () => {}) {
   const stateKey = s => s ? `${s.lobbyId}/${s.matchId}/${s.lease}/${s.revision}` : '';
   const schedule = (delay = 700) => {
     clearTimeout(timer);
-    if (!stopped && state && socket.connected) timer = setTimeout(() => {
-      if (thinking || inFlight) { schedule(); return; }
+    if (!stopped && state && socket.connected && !thinking && !inFlight) timer = setTimeout(() => {
       thinking = true; worker.postMessage({ key, state });
     }, delay);
   };
@@ -20,7 +19,11 @@ export function attachBotController(socket, onError = () => {}) {
     thinking = false;
     if (stopped || data.key !== key || !state || !socket.connected) { schedule(); return; }
     if (data.error) { onError(`Bot could not choose a move: ${data.error}`); schedule(3000); return; }
-    if (!data.action) { schedule(1000); return; }
+    // Idle observations cannot change without a revision. Only trade expiry needs a wake-up.
+    if (!data.action) {
+      if (Number.isFinite(data.retryAfter)) schedule(Math.max(1, data.retryAfter));
+      return;
+    }
     const snapshot = state;
     inFlight = true;
     socket.timeout(5000).emit('botAction', { botId: data.botId, action: data.action, matchId: snapshot.matchId, lease: snapshot.lease, revision: snapshot.revision }, (error, result) => {
@@ -31,7 +34,8 @@ export function attachBotController(socket, onError = () => {}) {
         socket.emit('syncBots', {}, () => {});
         if (!error && result?.error && !/changed/.test(result.error)) onError(`Bot move rejected: ${result.error}`);
       }
-      schedule(error || !result?.ok ? 1500 : 700);
+      if (error || !result?.ok) schedule(1500);
+      else if (key !== data.key) schedule();
     });
   };
   worker.onerror = () => { onError('Local bots stopped. Reload this tab to restart them.'); stopped = true; clearTimeout(timer); };
