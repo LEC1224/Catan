@@ -48,3 +48,19 @@ test("zoom preserves the point under the pointer until it reaches the camera lim
   assert.equal(clamped.zoom, 3.5);
   assert.ok(clamped.x < viewport.width);
 });
+
+test("cached board scenery contains static polygon geometry, independent of live pieces", () => {
+  const { board } = createGame(players, { map: "sweden", seed: "static-scenery" });
+  const scenery = boardScenery(board);
+  for (const hex of board.hexes) {
+    const expected = hex.vertexIds.map(id => {
+      const vertex = board.vertices.find(candidate => candidate.id === id);
+      return `${vertex.x},${vertex.y}`;
+    }).join(" ");
+    assert.equal(scenery.polygons[hex.id], expected);
+  }
+  board.vertices[0].building = { owner: "a", type: "city" };
+  board.edges[0].owner = "a";
+  assert.deepEqual(boardScenery(board), scenery, "piece updates do not invalidate scenery");
+  assert.equal(Object.hasOwn(scenery.vertices[board.vertices[0].id], "building"), false);
+});

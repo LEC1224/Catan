@@ -124,7 +124,7 @@ function TerrainImage({ h, terrain, variant }) {
 
 function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, scenery, variants }) {
   const ids = useId();
-  const { vertices, shore, ports } = scenery;
+  const { vertices, polygons, shore, ports } = scenery;
   const { hexes, edges } = game.board;
   const colors = Object.fromEntries(game.players.map((p, i) => [p.id, { color: p.color, filter: `${ids}-roof-${i}` }]));
   const isActive = game.activePlayerId === meId, legal = game.legal || {};
@@ -136,7 +136,6 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
   const roads = new Set(isActive && (game.phase === "setupRoad" || game.roadBuildingRemaining || mode === "road" || previewRoads) ? legal.roads : []);
   const cities = new Set(isActive && (mode === "city" || previewCities) ? legal.cities : []);
   const robber = robberPlacement(game, meId);
-  const points = (h) => h.vertexIds.map((id) => `${vertices[id].x},${vertices[id].y}`).join(" ");
   return (
     <>
       <defs>
@@ -148,7 +147,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
         <pattern id={`${ids}-sand`} patternUnits="userSpaceOnUse" width="84" height="84">
           <svg width="84" height="84" viewBox="1092 582 340 340"><image href="/assets/terrain-atlas.png" width="1536" height="1024" /></svg>
         </pattern>
-        {hexes.map((h) => <clipPath key={h.id} id={`${ids}-${h.id}`}><polygon points={points(h)} /></clipPath>)}
+        {hexes.map((h) => <clipPath key={h.id} id={`${ids}-${h.id}`}><polygon points={polygons[h.id]} /></clipPath>)}
         {Object.entries(ROOFS).map(([type, d]) => <clipPath key={type} id={`${ids}-shape-${type}`}><path d={d} /></clipPath>)}
         {Object.values(colors).map(({ filter, color }) => (
           <filter key={filter} id={filter} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
@@ -163,7 +162,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
         const state = robber?.state(h.id), selectable = state === "destination", blocked = game.robberHexId === h.id;
         const hint = ROBBER_TILE_HINTS[state];
         const choose = () => onAction("moveRobber", { hexId: h.id });
-        const polygon = points(h);
+        const polygon = polygons[h.id];
         return (
           <g key={h.id} className={selectable ? "hex-selectable" : undefined} role={selectable ? "button" : state ? "img" : undefined}
             data-robber-state={state} tabIndex={selectable ? 0 : undefined}
@@ -387,9 +386,12 @@ function BoardCamera({ bounds, seed, children }) {
 }
 
 export function Board({ game, matchId, meId, mode, canBuild, busy, onAction, resourceMeta }) {
-  const scenery = useMemo(() => boardScenery(game.board), [game.board]);
+  // Socket observations and replay seeks replace board objects, but terrain, ports and
+  // coordinates stay fixed throughout a match. Legacy views without an ID use identity.
+  const geometryKey = matchId || game.board;
+  const scenery = useMemo(() => boardScenery(game.board), [geometryKey]);
   const artSeed = game.settings.seed || matchId || game.board.hexes.map((h) => `${h.terrain}:${h.number}`).join("/");
-  const variants = useMemo(() => terrainVariants(game.board.hexes, artSeed), [game.board.hexes, artSeed]);
+  const variants = useMemo(() => terrainVariants(game.board.hexes, artSeed), [geometryKey, artSeed]);
   return (
     <BoardCamera bounds={scenery.bounds} seed={game.settings.seed}>
       <BoardScene game={game} meId={meId} mode={mode} canBuild={canBuild} busy={busy}

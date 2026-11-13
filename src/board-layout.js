@@ -40,8 +40,11 @@ function smoothLoop(points) {
 }
 
 export function boardScenery(board) {
-  const vertices = Object.fromEntries(board.vertices.map((v) => [v.id, v]));
+  // Scenery is static for a match. Keep live buildings out of the cached geometry.
+  const vertices = Object.fromEntries(board.vertices.map(({ id, x, y }) => [id, { id, x, y }]));
   const hexes = Object.fromEntries(board.hexes.map((h) => [h.id, h]));
+  const polygons = Object.fromEntries(board.hexes.map(h => [h.id,
+    h.vertexIds.map(id => `${vertices[id].x},${vertices[id].y}`).join(" ")]));
   const coastal = board.edges.filter((e) => e.hexIds.length === 1);
   const edges = Object.fromEntries(coastal.map((e) => [e.id, e]));
   const coastline = new Map();
@@ -107,7 +110,7 @@ export function boardScenery(board) {
   const xs = board.vertices.map((v) => v.x), ys = board.vertices.map((v) => v.y);
   const left = Math.min(...xs) - 76, right = Math.max(...xs) + 76;
   const top = Math.min(...ys) - 76, bottom = Math.max(...ys) + 76;
-  return { vertices, shore: smoothLoop(shore), ports, bounds: { x: (left + right) / 2, y: (top + bottom) / 2, width: right - left, height: bottom - top } };
+  return { vertices, polygons, shore: smoothLoop(shore), ports, bounds: { x: (left + right) / 2, y: (top + bottom) / 2, width: right - left, height: bottom - top } };
 }
 
 export function moveCamera(camera, viewport, { x = 0, y = 0, zoom = camera.zoom, anchorX = viewport.x, anchorY = viewport.y }) {
