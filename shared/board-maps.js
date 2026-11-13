@@ -18,6 +18,21 @@ export const BOARD_MAPS = [
     [1, [-3, -2, 1, 2]],
     [2, [-3, 1]],
   ]) },
+  { id: 'sweden', name: 'Sweden', description: '30 hexes along a connected Swedish mainland, from the northern highlands to the southern coast.', cells: axialRows([
+    [-6, [2, 3]],
+    [-5, [2, 3, 4]],
+    [-4, [1, 2, 3]],
+    [-3, [0, 1, 2]],
+    [-2, [0, 1]],
+    [-1, [-1, 0]],
+    [0, [-2, -1]],
+    [1, [-3, -2]],
+    [2, [-3, -2]],
+    [3, [-4, -3, -2]],
+    [4, [-5, -4, -3]],
+    [5, [-5, -4]],
+    [6, [-6]],
+  ]) },
 ];
 
 export function boardMap(settings = {}) {

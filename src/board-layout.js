@@ -52,6 +52,15 @@ export function boardScenery(board) {
     }
   }
   const shore = [];
+  const sweden = board.map === "sweden";
+  const coastDetail = sweden ? [1 / 8, 2 / 8, 3 / 8, 4 / 8, 5 / 8, 6 / 8, 7 / 8] : [1 / 3, 2 / 3];
+  // The beach can describe finer headlands and inlets than the playable hex grid.
+  const swedishBeach = (x, y, dx, dy) => {
+    const southernTip = Math.max(0, (y - 495) / 105) * Math.max(0, dy) * 15;
+    const northernRidge = Math.max(0, (-y - 315) / 285) * Math.max(0, -dx) * 9;
+    const inlets = (dx > 0 ? 4.5 : 2.5) * Math.sin(y * .09 + x * .025);
+    return 19 + southernTip + northernRidge + inlets + 2 * Math.sin(x * .22 + y * .17);
+  };
   const outward = (a, b, tile) => {
     const dx = (a.x + b.x) / 2 - tile.x;
     const dy = (a.y + b.y) / 2 - tile.y;
@@ -69,11 +78,12 @@ export function boardScenery(board) {
     const tile = hexes[next.hexIds[0]];
     const [dx, dy] = outward(a, b, tile);
     const normals = coastline.get(vId).map((e) => outward(vertices[e.a], vertices[e.b], hexes[e.hexIds[0]]));
-    const index = shore.length / 3;
-    const corner = 14 + Math.sin(index * 2.18) * 4;
+    const index = visited.size - 1;
+    const corner = sweden ? swedishBeach(a.x, a.y, dx, dy) : 14 + Math.sin(index * 2.18) * 4;
     shore.push({ x: a.x + (normals[0][0] + normals[1][0]) * corner / 2, y: a.y + (normals[0][1] + normals[1][1]) * corner / 2 });
-    for (const t of [1 / 3, 2 / 3]) {
-      const extent = 15 + Math.sin(index * 3.35 + t * 8) * 5 + Math.sin(index * .75) * 4;
+    for (const t of coastDetail) {
+      const extent = sweden ? swedishBeach(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, dx, dy)
+        : 15 + Math.sin(index * 3.35 + t * 8) * 5 + Math.sin(index * .75) * 4;
       shore.push({ x: a.x + (b.x - a.x) * t + dx * extent, y: a.y + (b.y - a.y) * t + dy * extent });
     }
     vId = nextId;

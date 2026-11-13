@@ -45,7 +45,7 @@ Lobby and game sound effects start after your first interaction. If you need to 
 | Setting | Default | Meaning |
 |---|---|---|
 | Seats | 4 | Between 2 and 6 |
-| Board | Classic for 2–4 seats; Expanded for 5–6 | Classic (19), Expanded (30), or The Narrows (19): two halves joined by one land hex, with road crossings along either side. 5–6 players retain expanded supplies on every map. |
+| Board | Classic for 2–4 seats; Expanded for 5–6 | Classic (19), Expanded (30), The Narrows (19: two halves joined by one land hex), or Sweden (30: a long, connected mainland with a detailed beach outline). 30-hex boards and all 5–6-player matches use expanded supplies. |
 | Lock desert to center | Off | Places a desert on the hex nearest the map's center and starts the robber there. On Expanded, it uses the left middle hex and shuffles the second desert with the other tiles. |
 | Points to win | 15 for 2 seats; 12 for 3; 10 for 4–6 | 3–20 |
 | Discard threshold | 9 for 2 seats; 8 for 3; 7 for 4–6 | On a seven, hands above this size discard half |

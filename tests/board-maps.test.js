@@ -32,7 +32,7 @@ test('every map is connected, reproducible, and has valid production, coastline 
     const scenery = boardScenery(board);
     assert.match(scenery.shore, /^M.+Z$/);
     assert.equal(scenery.shore.includes('NaN'), false);
-    assert.equal((scenery.shore.match(/Q/g) || []).length, board.edges.filter(e => e.hexIds.length === 1).length * 3);
+    assert.equal((scenery.shore.match(/Q/g) || []).length, board.edges.filter(e => e.hexIds.length === 1).length * (map.id === 'sweden' ? 8 : 3));
   }
 });
 
@@ -59,4 +59,7 @@ test('map settings preserve shaped maps on player-limit changes and support old 
   assert.equal(validateSettings({ maxPlayers: 6 }, narrows).map, 'narrows');
   assert.equal(validateSettings({ extendedBoard: false }, narrows).map, 'classic');
   assert.equal(validateSettings({ map: 'narrows', extendedBoard: true }).extendedBoard, false);
+  const sweden = validateSettings({ map: 'sweden', extendedBoard: false });
+  assert.equal(sweden.extendedBoard, true);
+  assert.equal(validateSettings({ maxPlayers: 2 }, sweden).map, 'sweden');
 });
