@@ -93,6 +93,20 @@ function exchangePlan(hand, cost, bank, ratios, maxSteps) {
   return pays(resources, cost) ? steps : null;
 }
 
+function achievableGoal(options, g, c, difficulty, memory, random) {
+  // Every site of the same building type has the same exchange cost. Evaluate it once.
+  const plans = new Map();
+  const maxSteps = difficulty === 'hard' ? 5 : difficulty === 'normal' ? 2 : 1;
+  const achievable = options.flatMap(option => {
+    const type = option.action.type;
+    if (!plans.has(type)) plans.set(type, exchangePlan(c.p.resources, COST[type], g.bank, c.ratios, maxSteps));
+    const plan = plans.get(type);
+    return plan ? [{ ...option, plan, score: option.score / (1 + plan.length * 0.2) }] : [];
+  });
+  // Once an exchange starts, finish its build before spending those ingredients elsewhere.
+  return achievable.find(option => JSON.stringify(option.action) === memory.exchangeGoal) || pick(achievable, difficulty, random);
+}
+
 function goals(g, id, c, difficulty) {
   const options = [];
   for (const vertexId of g.legal.settlements) options.push({ action: { type: 'placeSettlement', vertexId }, score: 32 + c.siteValue(c.vertices.get(vertexId)) });
@@ -203,17 +217,18 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
     return now >= memory.offerUntil ? { type: 'cancelTrade', offerId: own.id } : null;
   }
   const options = goals(g, id, c, difficulty);
-  const target = pick(options.map(o => ({ ...o, score: o.score / (1 + missing(p.resources, COST[o.action.type]) * 0.6) + (memory.goal === JSON.stringify(o.action) ? 2 : 0) })), difficulty, random);
+  const achievable = achievableGoal(options, g, c, difficulty, memory, random);
+  const target = options.find(o => JSON.stringify(o.action) === memory.exchangeGoal) || pick(options.map(o => ({ ...o, score: o.score / (1 + missing(p.resources, COST[o.action.type]) * 0.6) + (memory.goal === JSON.stringify(o.action) ? 2 : 0) })), difficulty, random);
   const cost = target ? COST[target.action.type] : COST.buyDevelopment;
   if (target) memory.goal = JSON.stringify(target.action);
+  if (achievable?.score >= 100 && !achievable.plan.length) return achievable.action;
   const card = playCard(g, id, c, cost, difficulty);
   if (card) return card;
-  const affordable = pick(options.filter(o => pays(p.resources, COST[o.action.type])), difficulty, random);
-  if (affordable) return affordable.action;
-  const plans = options.map(o => ({ ...o, plan: exchangePlan(p.resources, COST[o.action.type], g.bank, c.ratios, difficulty === 'hard' ? 5 : difficulty === 'normal' ? 2 : 1) }))
-    .filter(o => o.plan?.length).map(o => ({ ...o, score: o.score / (1 + o.plan.length * 0.2) }));
-  const plan = pick(plans, difficulty, random);
-  if (plan) return plan.plan[0];
+  if (achievable) {
+    memory.exchangeGoal = achievable.plan.length ? JSON.stringify(achievable.action) : undefined;
+    return achievable.plan[0] || achievable.action;
+  }
+  delete memory.exchangeGoal;
   if (target && !memory.offered && trading) {
     const receive = RESOURCES.find(r => p.resources[r] < (cost[r] || 0));
     const give = RESOURCES.filter(r => r !== receive && p.resources[r] > (cost[r] || 0))
