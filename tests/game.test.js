@@ -367,6 +367,31 @@ test('invention failure does not partially grant resources; monopoly takes all m
   conservation(g);
 });
 
+test('unlimited resources survive serialization and still require payment for bank trades', () => {
+  const g = JSON.parse(JSON.stringify(ready(3, { unlimitedResourceCards: true })));
+  const bank = structuredClone(g.bank);
+  g.players[0].resources.wool = 0;
+  for (const v of g.board.vertices) v.port = null;
+  const trade = { give: 'wool', receive: 'ore' };
+  assert.throws(() => action(g, 'p0', 'bankTrade', trade), /enough resources/);
+  g.players[0].resources.wool = 4;
+  assert.deepEqual(bankTradeDraft({ wool: 4 }, { ore: 1 }, bank, () => 4, resourceName).payload, { ...trade, amount: 1 });
+  const before = g.players[0].resources.ore;
+  action(g, 'p0', 'bankTrade', trade);
+  const cardId = card(g, 'p0', 'invention');
+  action(g, 'p0', 'playDevelopment', { cardId, resources: { ore: 2 } });
+  assert.equal(g.players[0].resources.wool, 0);
+  assert.equal(g.players[0].resources.ore, before + 3);
+  assert.deepEqual(g.bank, bank);
+
+  g.phase = 'discard';
+  g.players[0].resources.ore = 302;
+  g.discardRequired = { p0: 151 };
+  action(g, 'p0', 'discard', { resources: { ore: 151 } });
+  assert.equal(g.players[0].resources.ore, 151);
+  assert.deepEqual(g.bank, bank);
+});
+
 test('Road Building places two free legal roads and restores the pre-roll phase', () => {
   const g = setup(make()), id = card(g, 'p0', 'roadBuilding'), resources = structuredClone(g.players[0].resources);
   action(g, 'p0', 'playDevelopment', { cardId: id }); assert.equal(g.roadBuildingRemaining, 2);

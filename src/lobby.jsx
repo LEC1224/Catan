@@ -388,6 +388,7 @@ function SettingsPanel({ lobby, host, busy, command }) {
             <Toggle checked={settings.friendlyRobber} onChange={(value) => change("friendlyRobber", value)} label="Friendly robber" description="Protect players with fewer than 3 visible points." disabled={disabled} />
             <Toggle checked={settings.balancedNumbers} onChange={(value) => change("balancedNumbers", value)} label="Balanced numbers" description="Prevent adjacent 6 and 8 tokens." disabled={disabled} />
             <Toggle checked={settings.unlimitedDevelopmentCards} onChange={(value) => change("unlimitedDevelopmentCards", value)} label="Unlimited Dev Cards in Bank" description="Shuffle a fresh deck when the bank runs out." disabled={disabled} />
+            <Toggle checked={settings.unlimitedResourceCards} onChange={(value) => change("unlimitedResourceCards", value)} label="Unlimited resource Cards in Bank" disabled={disabled} />
             <Toggle checked={settings.allowPlayerTrading} onChange={(value) => change("allowPlayerTrading", value)} label="Player trading" disabled={disabled} />
             <Toggle checked={settings.pairedTurns} onChange={(value) => change("pairedTurns", value)} label="Paired turns for 5–6 players" description="A second player gets an action phase after each turn." disabled={disabled} />
             <div className="lobby-settings-grid">

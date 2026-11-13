@@ -1,5 +1,5 @@
 // Browser-only decision policy. Accepts exactly one player's masked view, never server state.
-import { bankTradeRate, openTradeOffers, playerTradesAvailable } from '../../shared/trades.js';
+import { bankTradeRate, openTradeOffers, playerTradesAvailable, resourceStock } from '../../shared/trades.js';
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COST = {
@@ -79,7 +79,7 @@ function pick(options, difficulty, random) {
 
 // Plan a complete exchange-and-build sequence; never trade ingredients away from its goal.
 function exchangePlan(hand, cost, bank, ratios, maxSteps) {
-  const resources = { ...hand }, supply = { ...bank }, steps = [];
+  const resources = { ...hand }, supply = Object.fromEntries(RESOURCES.map(r => [r, resourceStock(bank, r)])), steps = [];
   while (!pays(resources, cost) && steps.length < maxSteps) {
     const receive = RESOURCES.find(r => resources[r] < (cost[r] || 0) && supply[r] > 0);
     if (!receive) return null;
@@ -119,7 +119,7 @@ function playCard(g, id, c, cost, difficulty) {
     if (card.type === 'invention') {
       const resources = empty();
       for (let n = 0; n < 2; n++) {
-        const r = RESOURCES.filter(r => g.bank[r] > resources[r]).sort((a, b) =>
+        const r = RESOURCES.filter(r => resourceStock(g.bank, r) > resources[r]).sort((a, b) =>
           ((cost[b] || 0) - c.p.resources[b] - resources[b]) - ((cost[a] || 0) - c.p.resources[a] - resources[a]))[0];
         if (!r) break;
         resources[r]++;

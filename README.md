@@ -54,11 +54,12 @@ Lobby and game sound effects start after your first interaction. If you need to 
 | Friendly robber | On for 2–3 seats; Off for 4–6 | Cannot move onto a hex touching an opponent with fewer than 3 visible points |
 | Balanced numbers | On | Prevents adjacent 6/8 tokens |
 | Unlimited Dev Cards in Bank | On | A fresh deck is shuffled when the current one runs out. Turn it off for a single deck of 25 cards (34 with expanded supplies). |
+| Unlimited resource Cards in Bank | Off | All resource types stay in stock for production, trades, and Invention. |
 | Player trading | On | Disable for supply/port-only trading |
 | Paired turns | On | With 5–6 actual players, a second player receives an action phase without player trading |
 | Map seed | Random | Reproduce terrain/number/port setup; dice and card draws remain random |
 
-Two-player play uses ordinary core rules as a **casual house variant**, not the official neutral-settlement/trade-token two-player scenario. Choosing a small board for 5–6 is also a deliberately crowded house variant. Expanded boards and all games with 5–6 actual players use 24 cards per resource and 34 cards per development deck; choosing the small board for 5–6 changes only the island. Timer expiry completes mandatory choices automatically and ends action phases; ordinary trades and builds do not refill the action-phase clock.
+Two-player play uses ordinary core rules as a **casual house variant**, not the official neutral-settlement/trade-token two-player scenario. Choosing a small board for 5–6 is also a deliberately crowded house variant. Expanded boards and all games with 5–6 actual players use 24 cards per resource when resources are finite, and 34 cards per development deck; choosing the small board for 5–6 changes only the island. Timer expiry completes mandatory choices automatically and ends action phases; ordinary trades and builds do not refill the action-phase clock.
 
 ## Implemented rules
 

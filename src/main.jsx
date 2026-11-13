@@ -630,9 +630,9 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
             <h3>Bank</h3>
             <div>
               {RES.map((r) => (
-                <span key={r} data-deal-bank={r} title={`${META[r].name} remaining`}>
+                <span key={r} data-deal-bank={r} title={`${game.bank[r] ?? "Unlimited"} ${META[r].name} remaining`}>
                   <ResourceIcon resource={r} size={16} />
-                  <strong>{game.bank[r]}</strong>
+                  <strong>{game.bank[r] ?? "∞"}</strong>
                 </span>
               ))}
               <span role="img" data-deal-bank="development" title="Development cards remaining" aria-label={`${game.developmentRemaining ?? "Unlimited"} development cards remaining`}>

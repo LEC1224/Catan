@@ -1,5 +1,6 @@
 import React, { useId, useLayoutEffect, useRef, useState } from "react";
 import { Bot, Check, CircleAlert, LockKeyhole, Plus, Undo2, WifiOff, X } from "lucide-react";
+import { resourceStock } from "../shared/trades.js";
 import { PlayerHandBacks } from "./card-deals.jsx";
 import { ResourceCardRow } from "./resource-card-draft.jsx";
 import { resourceCounts } from "./resource-copies.js";
@@ -72,7 +73,7 @@ export function developmentRestriction(card, game, meId) {
   if (!["roll", "action"].includes(game.phase) || game.roadBuildingRemaining) {
     return "Finish the current action before playing this card.";
   }
-  if (card.type === "invention" && Object.values(game.bank).reduce((sum, count) => sum + count, 0) < 2) {
+  if (card.type === "invention" && Object.keys(game.bank).reduce((sum, type) => sum + resourceStock(game.bank, type), 0) < 2) {
     return "The bank has fewer than two resources.";
   }
   return "";
@@ -88,7 +89,7 @@ export function DevelopmentTray({ id, card, game, meta, restriction, busy, onClo
   const picking = playable && (invention || monopoly);
   const limit = invention ? 2 : 1;
   const counts = resourceCounts(picks);
-  const bankChanged = invention && Object.entries(counts).some(([type, count]) => count > game.bank[type]);
+  const bankChanged = invention && Object.entries(counts).some(([type, count]) => count > resourceStock(game.bank, type));
   const canPlay = !busy && (!picking || (picks.length === limit && !bankChanged));
   const Icon = meta.icon;
   return (
@@ -109,7 +110,7 @@ export function DevelopmentTray({ id, card, game, meta, restriction, busy, onClo
           <ResourceCardRow cards={resourceTypes.map(type => ({ id: type, type }))} meta={resourceMeta} Face={Face}
             label={invention ? "Bank resources" : "Resources to claim"} size="picker" marker={Plus} busy={busy}
             actionLabel={name => invention ? `Take one ${name}` : `Choose ${name}`}
-            blocked={({ type }) => invention ? picks.length >= limit || (counts[type] || 0) >= game.bank[type] : picks[0]?.type === type}
+            blocked={({ type }) => invention ? picks.length >= limit || (counts[type] || 0) >= resourceStock(game.bank, type) : picks[0]?.type === type}
             onCard={({ type }) => {
               const pick = { id: `pick:${++serial.current}`, type };
               setPicks(previous => invention ? [...previous, pick] : [pick]);

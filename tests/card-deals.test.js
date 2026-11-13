@@ -8,7 +8,7 @@ const player = id => ({ kind: 'player', id });
 const tile = id => ({ kind: 'tile', id });
 const bank = { kind: 'bank' };
 const resource = (from, to, type, count) => ({ from, to, kind: 'resource', type, count });
-const game = () => createGame(['a', 'b', 'c'].map(id => ({ id, name: id, color: '#855' })), { seed: 'card-deals' });
+const game = settings => createGame(['a', 'b', 'c'].map(id => ({ id, name: id, color: '#855' })), { seed: 'card-deals', ...settings });
 
 function rollSix(t, run) {
   const dice = t.mock.method(crypto, 'randomInt', () => 3);
@@ -17,8 +17,8 @@ function rollSix(t, run) {
   finally { dice.mock.restore(); syncBuiltinESMExports(); }
 }
 
-function productionGame() {
-  const g = game();
+function productionGame(unlimitedResourceCards = false) {
+  const g = game({ unlimitedResourceCards });
   const [city, settlement, secondCity, blocked, shortA, shortB] = g.board.vertices;
   const producers = [
     ['forest', 'wood', city, 'a', 'city'],
@@ -33,8 +33,7 @@ function productionGame() {
     return { id, number: 6, terrain, vertexIds: [v.id] };
   });
   g.robberHexId = 'robber';
-  g.bank.wood = 3;
-  g.bank.brick = 1;
+  if (!unlimitedResourceCards) { g.bank.wood = 3; g.bank.brick = 1; }
   g.phase = 'roll';
   return g;
 }
@@ -52,6 +51,17 @@ test('production records the paid tiles and quantities, even when a timeout clea
     resource(tile('second-forest'), player('a'), 'wood', 1),
     resource(tile('pasture'), player('b'), 'wool', 1),
   ] }]);
+});
+
+test('unlimited production pays each eligible building in full and still respects the robber', t => {
+  const g = productionGame(true);
+  rollSix(t, () => action(g, 'a', 'rollDice'));
+  assert.equal(g.players[0].resources.wood, 4);
+  assert.equal(g.players[0].resources.brick, 1);
+  assert.equal(g.players[1].resources.brick, 1);
+  assert.equal(g.players[0].resources.ore, 0);
+  assert.equal(g.bank.wood, null);
+  assert.equal(g.bank.brick, null);
 });
 
 test('offers and failed exchanges create no flights; completed exchanges record both directions', () => {

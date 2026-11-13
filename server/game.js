@@ -1,11 +1,11 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { resourceName } from '../shared/resource-names.js';
-import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable } from '../shared/trades.js';
+import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable, resourceStock } from '../shared/trades.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { wool: 1, wheat: 1, ore: 1 } };
-const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const fail = text => { throw new Error(text); };
@@ -91,21 +91,22 @@ function buildBoard(settings) {
   return { hexes, vertices, edges, ports };
 }
 
-function resourceMap(value, { nonzero = false } = {}) {
+function resourceMap(value, { nonzero = false, maxQuantity = 150 } = {}) {
   requireThat(value && typeof value === 'object' && !Array.isArray(value), 'Choose resource quantities.');
   requireThat(Object.keys(value).every(k => RESOURCES.includes(k)), 'Unknown resource.');
   const map = emptyResources();
-  for (const r of RESOURCES) { const n = value[r] ?? 0; requireThat(Number.isInteger(n) && n >= 0 && n <= 150, 'Resource quantities must be whole, non-negative numbers.'); map[r] = n; }
+  for (const r of RESOURCES) { const n = value[r] ?? 0; requireThat(Number.isSafeInteger(n) && n >= 0 && n <= maxQuantity, 'Resource quantities must be whole, non-negative numbers.'); map[r] = n; }
   requireThat(!nonzero || sum(map) > 0, 'Choose at least one resource.');
   return map;
 }
 function canPay(p, cost) { return Object.entries(cost).every(([r, n]) => p.resources[r] >= n); }
+function changeStock(g, r, amount) { if (g.bank[r] !== null) g.bank[r] += amount; }
 function pay(g, p, cost, moves) {
   requireThat(canPay(p, cost), 'You do not have enough resources.');
-  for (const [r, n] of Object.entries(cost)) { p.resources[r] -= n; g.bank[r] += n; }
+  for (const [r, n] of Object.entries(cost)) { p.resources[r] -= n; changeStock(g, r, n); }
   if (moves) moveResources(moves, playerHand(p.id), bank, cost);
 }
-function grant(g, p, map) { for (const [r, n] of Object.entries(map)) { requireThat(g.bank[r] >= n, `The supply does not have enough ${resourceName(r)}.`); g.bank[r] -= n; p.resources[r] += n; } }
+function grant(g, p, map) { for (const [r, n] of Object.entries(map)) { requireThat(resourceStock(g.bank, r) >= n, `The supply does not have enough ${resourceName(r)}.`); changeStock(g, r, -n); p.resources[r] += n; } }
 function produceResources(g, total, moves) {
   const due = Object.fromEntries(RESOURCES.map(r => [r, new Map()]));
   for (const h of g.board.hexes) if (h.number === total && h.id !== g.robberHexId) {
@@ -121,12 +122,12 @@ function produceResources(g, total, moves) {
   for (const r of RESOURCES) {
     const recipients = due[r];
     const demand = [...recipients.values()].flatMap(tiles => [...tiles.values()]).reduce((n, count) => n + count, 0);
-    if (demand > g.bank[r] && recipients.size > 1) {
+    if (demand > resourceStock(g.bank, r) && recipients.size > 1) {
       addLog(g, `The ${resourceName(r)} supply cannot cover production; nobody receives ${resourceName(r)}.`);
       continue;
     }
     for (const [id, tiles] of recipients) for (const [hexId, count] of tiles) {
-      const paid = Math.min(count, g.bank[r]);
+      const paid = Math.min(count, resourceStock(g.bank, r));
       if (!paid) break;
       const resources = { [r]: paid };
       grant(g, player(g, id), resources);
@@ -138,7 +139,7 @@ function enforceHandLimits(g) {
   if (!g.settings.hardHandLimit) return;
   for (const p of g.players) {
     let excess = sum(p.resources) - g.settings.hardHandLimit, removed = 0;
-    while (excess-- > 0) { const r = [...RESOURCES].sort((a, b) => p.resources[b] - p.resources[a])[0]; p.resources[r]--; g.bank[r]++; removed++; }
+    while (excess-- > 0) { const r = [...RESOURCES].sort((a, b) => p.resources[b] - p.resources[a])[0]; p.resources[r]--; changeStock(g, r, 1); removed++; }
     if (removed) addLog(g, `${p.name} returned ${removed} cards above the hard hand limit (largest piles first).`);
   }
 }
@@ -241,9 +242,10 @@ export function createGame(players, settings = {}) {
   requireThat(new Set(players.map(p => p.id)).size === players.length, 'Player IDs must be unique.');
   const merged = { ...DEFAULTS, ...settings }, board = buildBoard(merged);
   const expandedSupply = usesExpandedSupply(players, merged);
+  const stock = merged.unlimitedResourceCards ? null : expandedSupply ? 24 : 19;
   const g = {
     settings: merged, board, players: players.map(p => ({ id: p.id, name: p.name, color: p.color, resources: emptyResources(), development: [], resourceCount: 0, developmentCount: 0, knights: 0, roadsLeft: 15, settlementsLeft: 5, citiesLeft: 4, score: 0, visibleScore: 0, longestRoad: 0 })),
-    bank: Object.fromEntries(RESOURCES.map(r => [r, expandedSupply ? 24 : 19])),
+    bank: Object.fromEntries(RESOURCES.map(r => [r, stock])),
     developmentDeck: makeDevelopmentDeck(expandedSupply), playedDevelopment: [],
     phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, dice: null,
     robberHexId: (merged.lockDesertToCenter ? board.hexes[centerHexIndex(board.hexes.length)] : board.hexes.find(h => h.terrain === 'desert')).id,
@@ -297,7 +299,7 @@ function applyAction(g, id, type, payload, moves) {
   requireThat(g.phase !== 'finished', 'This game has ended.');
   if (type === 'discard') {
     requireThat(g.phase === 'discard' && g.discardRequired[id] > 0, 'You do not need to discard.');
-    const resources = resourceMap(payload.resources);
+    const resources = resourceMap(payload.resources, { maxQuantity: Math.max(150, g.discardRequired[id]) });
     requireThat(sum(resources) === g.discardRequired[id], `Discard exactly ${g.discardRequired[id]} resources.`);
     pay(g, p, resources); delete g.discardRequired[id]; addLog(g, `${p.name} discarded ${sum(resources)} resources.`, 'discard');
     if (!Object.keys(g.discardRequired).length) activateRobber(g);

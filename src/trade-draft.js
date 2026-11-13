@@ -1,4 +1,4 @@
-import { MAX_BANK_TRADE_CARDS } from "../shared/trades.js";
+import { MAX_BANK_TRADE_CARDS, resourceStock } from "../shared/trades.js";
 
 export function bankTradeDraft(give, want, stock, rateFor, nameOf) {
   const offered = Object.entries(give).filter(([, quantity]) => quantity > 0);
@@ -14,7 +14,7 @@ export function bankTradeDraft(give, want, stock, rateFor, nameOf) {
     return { rate, hint: "Choose different resources to give and receive." };
   }
   for (const [type, quantity] of requested) {
-    const available = stock[type] ?? 0;
+    const available = resourceStock(stock, type);
     if (quantity > available) return { rate, hint: `The bank has ${available} ${nameOf(type)} left.` };
   }
   const amount = requested.reduce((total, [, quantity]) => total + quantity, 0);
