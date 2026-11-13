@@ -12,6 +12,7 @@ npm run dev
 ```
 
 Development mode restarts the server when its code changes.
+
 Open **http://localhost:3000**. The server listens on all network interfaces so other devices on the same network can use `http://YOUR-LAN-IP:3000` if the local firewall permits it. A localhost invite only works on the host computer; use the LAN address when copying invites for nearby devices.
 
 For an optimized local build:
@@ -71,9 +72,9 @@ npm run build
 - `server/game.js`: game state, rules, legal targets, personalized views and timers.
 - `server/index.js`: guest sessions, lobby directory, permissions, sockets and persistence.
 - `src/`: React client, interactive SVG board and styles.
-- `src/audio/`: recorded sound effects and [source credits](src/audio/README.md).
 - `tests/`: rules and real Socket.IO multiplayer tests.
 - `public/assets/`: generated illustrations used by the application.
+- `src/audio/`: recorded sound effects and [source credits](src/audio/README.md).
 - `ARTWORK.md`: image prompts and provenance.
 - `CONTRACT.md`: internal client/server event and state contract.
 
