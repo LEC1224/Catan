@@ -644,6 +644,7 @@
   gap: 12px;
 }
 .board-options { gap: 9px; }
+.map-description { margin: -4px 0 14px; color: var(--front-muted); font-size: 12px; line-height: 1.5; }
 .board-picker { margin-bottom: 3px; }
 .board-picker + .front-toggle { margin-bottom: 12px; }
 .board-choice {

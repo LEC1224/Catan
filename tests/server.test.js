@@ -26,7 +26,7 @@ test('new lobby settings default to the preset for the selected player limit', (
   }
   const custom = validateSettings({ maxPlayers: 2, extendedBoard: true, friendlyRobber: false, victoryPoints: 9, discardThreshold: 11 });
   assert.deepEqual([custom.extendedBoard, custom.friendlyRobber, custom.discardThreshold, custom.victoryPoints], [true, false, 11, 9]);
-  assert.deepEqual(validateSettings({ maxPlayers: 3 }, custom), { ...custom, maxPlayers: 3, extendedBoard: false });
+  assert.deepEqual(validateSettings({ maxPlayers: 3 }, custom), { ...custom, maxPlayers: 3, map: 'classic', extendedBoard: false });
 });
 
 test('settings reject invalid values', () => {

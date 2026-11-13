@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { resourceName } from '../shared/resource-names.js';
+import { boardMap, centerCellIndex } from '../shared/board-maps.js';
 import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable, resourceStock } from '../shared/trades.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
@@ -28,21 +29,16 @@ function seededRandom(seed) {
   return n => { state += 0x6D2B79F5; let t = state; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return Math.floor(((t ^ t >>> 14) >>> 0) / 4294967296 * n); };
 }
 
-// The rows are symmetric; use the left of the two middle hexes on the expanded board.
-const centerHexIndex = tileCount => Math.floor((tileCount - 1) / 2);
-
 function buildBoard(settings) {
   const random = settings.seed ? seededRandom(settings.seed) : n => randomInt(n);
-  const rows = settings.extendedBoard ? [3, 4, 5, 6, 5, 4, 3] : [3, 4, 5, 4, 3];
+  const map = boardMap(settings);
   const counts = settings.extendedBoard ? [6, 5, 6, 6, 5, 2] : [4, 3, 4, 4, 3, 1];
   const terrains = [...RESOURCES, 'desert'].flatMap((r, i) => Array(counts[i]).fill(r));
   if (settings.lockDesertToCenter) terrains.pop();
   shuffle(terrains, random);
-  if (settings.lockDesertToCenter) terrains.splice(centerHexIndex(terrains.length + 1), 0, 'desert');
+  if (settings.lockDesertToCenter) terrains.splice(centerCellIndex(map.cells), 0, 'desert');
   const vertices = [], edges = [], hexes = [], vertexMap = new Map(), edgeMap = new Map();
-  rows.forEach((length, row) => {
-    for (let col = 0; col < length; col++) {
-      const x = (col - (length - 1) / 2) * Math.sqrt(3) * 60, y = (row - (rows.length - 1) / 2) * 90;
+  for (const { x, y } of map.cells) {
       const h = { id: `h${hexes.length}`, x, y, terrain: terrains[hexes.length], number: null, vertexIds: [], edgeIds: [] };
       for (let k = 0; k < 6; k++) {
         const angle = (k * 60 - 90) * Math.PI / 180, vx = x + 60 * Math.cos(angle), vy = y + 60 * Math.sin(angle);
@@ -58,8 +54,7 @@ function buildBoard(settings) {
         e.hexIds.push(h.id); h.edgeIds.push(e.id);
       }
       hexes.push(h);
-    }
-  });
+  }
   const productive = hexes.filter(h => h.terrain !== 'desert');
   const numbers = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12].flatMap(n => Array(settings.extendedBoard ? (n === 2 || n === 12 ? 2 : 3) : (n === 2 || n === 12 ? 1 : 2)).fill(n));
   // Place frequent red numbers on an independent set; remaining numbers are unconstrained.
@@ -77,10 +72,23 @@ function buildBoard(settings) {
     const reds = shuffle(numbers.filter(n => n === 6 || n === 8), random), rest = shuffle(numbers.filter(n => n !== 6 && n !== 8), random);
     for (const h of productive) h.number = selected.includes(h) ? reds.pop() : rest.pop();
   } else { shuffle(numbers, random); productive.forEach((h, i) => { h.number = numbers[i]; }); }
-  const coastalEdges = edges.filter(e => e.hexIds.length === 1).sort((a, b) => {
+  let coastalEdges = edges.filter(e => e.hexIds.length === 1).sort((a, b) => {
     const av = vertices.find(v => v.id === a.a), aw = vertices.find(v => v.id === a.b), bv = vertices.find(v => v.id === b.a), bw = vertices.find(v => v.id === b.b);
     return Math.atan2(av.y + aw.y, av.x + aw.x) - Math.atan2(bv.y + bw.y, bv.x + bw.x);
   });
+  // Walk the real perimeter on shaped maps; angles skip around inward coastlines.
+  if (!['classic', 'expanded'].includes(map.id)) {
+    const remaining = new Set(coastalEdges);
+    const ordered = [];
+    let at = coastalEdges[0].a;
+    while (remaining.size) {
+      const next = [...remaining].find(e => e.a === at || e.b === at);
+      requireThat(next, 'The map coastline must be connected.');
+      ordered.push(next); remaining.delete(next);
+      at = next.a === at ? next.b : next.a;
+    }
+    coastalEdges = ordered;
+  }
   const portTypes = shuffle(['any', 'any', 'any', 'any', ...RESOURCES, ...(settings.extendedBoard ? ['any', 'wool'] : [])], random);
   const ports = [];
   portTypes.forEach((type, i) => {
@@ -88,7 +96,7 @@ function buildBoard(settings) {
     vertices.find(v => v.id === e.a).port = type; vertices.find(v => v.id === e.b).port = type;
     ports.push({ id: `port${i}`, type, vertexIds: [e.a, e.b], edgeId: e.id });
   });
-  return { hexes, vertices, edges, ports };
+  return { map: map.id, hexes, vertices, edges, ports };
 }
 
 function resourceMap(value, { nonzero = false, maxQuantity = 150 } = {}) {
@@ -240,7 +248,8 @@ function makeDevelopmentDeck(expandedSupply) {
 export function createGame(players, settings = {}) {
   requireThat(players.length >= 2 && players.length <= 6, 'A game needs two to six players.');
   requireThat(new Set(players.map(p => p.id)).size === players.length, 'Player IDs must be unique.');
-  const merged = { ...DEFAULTS, ...settings }, board = buildBoard(merged);
+  const map = boardMap(settings);
+  const merged = { ...DEFAULTS, ...settings, map: map.id, extendedBoard: map.cells.length > 19 }, board = buildBoard(merged);
   const expandedSupply = usesExpandedSupply(players, merged);
   const stock = merged.unlimitedResourceCards ? null : expandedSupply ? 24 : 19;
   const g = {
@@ -248,7 +257,7 @@ export function createGame(players, settings = {}) {
     bank: Object.fromEntries(RESOURCES.map(r => [r, stock])),
     developmentDeck: makeDevelopmentDeck(expandedSupply), playedDevelopment: [],
     phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, dice: null,
-    robberHexId: (merged.lockDesertToCenter ? board.hexes[centerHexIndex(board.hexes.length)] : board.hexes.find(h => h.terrain === 'desert')).id,
+    robberHexId: (merged.lockDesertToCenter ? board.hexes[centerCellIndex(board.hexes)] : board.hexes.find(h => h.terrain === 'desert')).id,
     longestRoadHolder: null, largestArmyHolder: null,
     log: [], pairedPlayer: false, primaryIndex: 0, setupOrder: [...players.map(p => p.id), ...players.map(p => p.id).reverse()], setupIndex: 0, setupVertexId: null,
     discardRequired: {}, stealTargets: [], tradeOffers: [], roadBuildingRemaining: 0, developmentPlayed: false,

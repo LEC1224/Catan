@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createGame, action, viewGame, tick } from './game.js';
 import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary, viewReplay } from './match-recording.js';
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
+import { boardMap } from '../shared/board-maps.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
@@ -27,11 +28,15 @@ export function validateSettings(input = {}, previous) {
     overrides[key] = input[key];
   }
   if ('seed' in input) overrides.seed = cleanText(input.seed, 64);
-  if (!previous) return { ...DEFAULT_SETTINGS, ...lobbyPreset(overrides.maxPlayers ?? DEFAULT_PLAYER_COUNT), ...overrides };
-  if ('maxPlayers' in overrides && overrides.maxPlayers !== previous.maxPlayers && !('extendedBoard' in overrides)) {
+  if ('map' in input) overrides.map = boardMap({ map: input.map ?? '' }).id;
+  const base = previous ?? { ...DEFAULT_SETTINGS, ...lobbyPreset(overrides.maxPlayers ?? DEFAULT_PLAYER_COUNT) };
+  if ('maxPlayers' in overrides && overrides.maxPlayers !== base.maxPlayers && !('extendedBoard' in overrides) && !('map' in overrides) && ['classic', 'expanded'].includes(boardMap(base).id)) {
     overrides.extendedBoard = lobbyPreset(overrides.maxPlayers).extendedBoard;
   }
-  return { ...previous, ...overrides };
+  if ('extendedBoard' in overrides && !('map' in overrides)) overrides.map = overrides.extendedBoard ? 'expanded' : 'classic';
+  const settings = { ...base, ...overrides };
+  const map = boardMap(settings);
+  return { ...settings, map: map.id, extendedBoard: map.cells.length > 19 };
 }
 
 export async function createAppServer({ port = 3000, host = '0.0.0.0', production = false, testMode = false, persistence = true, dataFile = path.join(root, '.runtime', 'lobbies.json') } = {}) {

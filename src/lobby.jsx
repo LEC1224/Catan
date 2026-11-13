@@ -4,13 +4,12 @@ import {
   Crown, DoorOpen, Flag, Globe2, Home, LockKeyhole, Plus, ScrollText, Users, X,
 } from "lucide-react";
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from "../shared/lobby-presets.js";
+import { BOARD_MAPS, boardMap } from "../shared/board-maps.js";
 import { Chat } from "./chat.jsx";
 import "./lobby.css";
 
 const PLAYER_COUNTS = [2, 3, 4, 5, 6];
 const TIMER_OPTIONS = [0, 30, 60, 90, 120, 180, 300, 600];
-const BOARD_ROWS = [[3, 4, 5, 4, 3], [3, 4, 5, 6, 5, 4, 3]];
-const BOARD_HEXES = BOARD_ROWS.map((rows) => rows.reduce((count, length) => count + length, 0));
 const TERRAIN_PALETTE = ["#70834b", "#a48d51", "#546b4a", "#8e6045", "#667e7d", "#bc9c63"];
 const DIFFICULTIES = { easy: "Easy", normal: "Normal", hard: "Hard" };
 
@@ -86,10 +85,12 @@ function PanelHeading({ icon: Icon, title, id, count, children }) {
   );
 }
 
-function BoardThumbnail({ expanded = false }) {
-  const rows = BOARD_ROWS[Number(expanded)];
-  const radius = 9.4;
-  const hex = "0,-9.4 8.14,-4.7 8.14,4.7 0,9.4 -8.14,4.7 -8.14,-4.7";
+function BoardThumbnail({ map }) {
+  const { cells } = map;
+  const left = Math.min(...cells.map(c => c.x)) - 60, right = Math.max(...cells.map(c => c.x)) + 60;
+  const top = Math.min(...cells.map(c => c.y)) - 60, bottom = Math.max(...cells.map(c => c.y)) + 60;
+  const scale = Math.min(144 / (right - left), 100 / (bottom - top));
+  const hex = "0,-60 51.96,-30 51.96,30 0,60 -51.96,30 -51.96,-30";
   return (
     <svg className="board-thumbnail" viewBox="0 0 164 112" aria-hidden="true" focusable="false">
       <g className="board-chart" fill="none">
@@ -98,37 +99,28 @@ function BoardThumbnail({ expanded = false }) {
         <circle cx="21" cy="25" r="9" className="board-chart-route" />
         <path d="m21 13 2.2 9.8L33 25l-9.8 2.2L21 37l-2.2-9.8L9 25l9.8-2.2z" className="board-chart-compass" />
       </g>
-      <g className="board-thumb-land">
-        {rows.flatMap((length, row) =>
-          Array.from({ length }, (_, col) => {
-            const x = 82 + (col - (length - 1) / 2) * Math.sqrt(3) * radius;
-            const y = 56 + (row - (rows.length - 1) / 2) * 1.5 * radius;
-            return (
-              <g key={`${row}-${col}`} transform={`translate(${x} ${y})`}>
-                <polygon points={hex} fill={TERRAIN_PALETTE[(row * 3 + col * 2 + Math.floor(col / 2)) % 6]} />
-                <path d="m-6 3 6 4 6-4" fill="none" stroke="#172321" strokeOpacity=".38" strokeWidth=".8" />
-              </g>
-            );
-          }),
-        )}
+      <g className="board-thumb-land" transform={`translate(82 56) scale(${scale}) translate(${-(left + right) / 2} ${-(top + bottom) / 2})`}>
+        {cells.map(({ x, y }, i) => (
+          <polygon key={i} transform={`translate(${x} ${y})`} points={hex} fill={TERRAIN_PALETTE[(i * 3 + Math.floor(i / 2)) % 6]} />
+        ))}
       </g>
     </svg>
   );
 }
 
-function BoardPicker({ expanded, onChange, disabled }) {
+function BoardPicker({ selected, onChange, disabled }) {
   const group = useId();
   return (
     <fieldset className="board-picker" disabled={disabled}>
       <legend>Board</legend>
       <div className="board-options">
-        {[false, true].map((option, index) => (
-          <label className="board-choice" key={index}>
-            <input type="radio" name={group} checked={expanded === option} onChange={() => onChange(option)} />
+        {BOARD_MAPS.map(map => (
+          <label className="board-choice" key={map.id}>
+            <input type="radio" name={group} checked={selected === map.id} onChange={() => onChange(map.id)} />
             <span className="board-choice-face">
-              <BoardThumbnail expanded={option} />
+              <BoardThumbnail map={map} />
               <span className="board-choice-caption">
-                <span><strong>{option ? "Expanded" : "Classic"}</strong><small>{BOARD_HEXES[index]} hexes</small></span>
+                <span><strong>{map.name}</strong><small>{map.cells.length} hexes</small></span>
                 <span className="board-choice-check" aria-hidden="true"><Check size={13} /></span>
               </span>
             </span>
@@ -185,7 +177,7 @@ function LobbyDirectory({ directory, onJoin, connected, busy }) {
               <tr key={room.id}>
                 <th scope="row" className="directory-room">
                   <strong>{room.name}</strong>
-                  <small>{room.hostName}<span className="directory-mobile-board"> · {room.settings?.extendedBoard ? "Expanded" : "Classic"}</span></small>
+                  <small>{room.hostName}<span className="directory-mobile-board"> · {boardMap(room.settings).name}</span></small>
                 </th>
                 <td>
                   <span className="directory-seats">
@@ -195,7 +187,7 @@ function LobbyDirectory({ directory, onJoin, connected, busy }) {
                     <span aria-label={`${room.playerCount} of ${room.maxPlayers} players`}>{room.playerCount}/{room.maxPlayers}</span>
                   </span>
                 </td>
-                <td className="directory-board">{room.settings?.extendedBoard ? "Expanded" : "Classic"}</td>
+                <td className="directory-board">{boardMap(room.settings).name}</td>
                 <td className="directory-status">
                   {canJoin(room) ? (
                     <button type="button" className="front-button directory-join" aria-label={`Join ${room.name}`} disabled={!connected || !!busy} onClick={() => onJoin(room.id)}>
@@ -288,7 +280,7 @@ export function HomeScreen({ name, setName, directory, command, busy, connected 
                     <dt>Board</dt>
                     <dd>
                       {preset.extendedBoard ? "Expanded" : "Classic"}
-                      <BoardThumbnail expanded={preset.extendedBoard} />
+                      <BoardThumbnail map={boardMap(preset)} />
                     </dd>
                   </div>
                   <div><dt>Points to win</dt><dd>{preset.victoryPoints}</dd></div>
@@ -336,10 +328,7 @@ function SettingsPanel({ lobby, host, busy, command }) {
   const settings = lobby.settings;
   const disabled = !host || !!busy;
   const change = (key, value) => command("configureLobby", {
-    settings: {
-      [key]: value,
-      ...(key === "maxPlayers" ? { extendedBoard: value >= 5 } : {}),
-    },
+    settings: { [key]: value },
   });
   return (
     <section className="front-panel lobby-settings" aria-labelledby="game-settings-title">
@@ -372,7 +361,8 @@ function SettingsPanel({ lobby, host, busy, command }) {
             <Toggle label="Private lobby" checked={lobby.isPrivate} disabled={!!busy} onChange={(isPrivate) => command("configureLobby", { isPrivate })} />
           </div>
         )}
-        <BoardPicker expanded={settings.extendedBoard} onChange={(value) => change("extendedBoard", value)} disabled={disabled} />
+        <BoardPicker selected={boardMap(settings).id} onChange={(value) => change("map", value)} disabled={disabled} />
+        <p className="map-description">{boardMap(settings).description}</p>
         <Toggle checked={settings.lockDesertToCenter} onChange={(value) => change("lockDesertToCenter", value)} label="Lock desert to center" disabled={disabled} />
         <div className="lobby-settings-grid">
           <SettingsSelect label="Player limit" value={settings.maxPlayers} options={PLAYER_COUNTS.filter((count) => count >= lobby.players.length)} disabled={disabled} onChange={(value) => change("maxPlayers", value)} />
