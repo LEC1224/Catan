@@ -469,7 +469,8 @@ function applyAction(g, id, type, payload, moves) {
   }
 }
 
-export function action(game, playerId, type, payload = {}) {
+// Return an isolated candidate so callers can record and commit it atomically.
+export function nextGame(game, playerId, type, payload = {}) {
   // Commit only successful commands: invalid card selections/trades never partially mutate a game.
   const draft = structuredClone(game);
   if (!draft.tradeOffers) draft.tradeOffers = openTradeOffers(draft).map((offer) => ({ ...offer, declinedBy: [] }));
@@ -483,13 +484,20 @@ export function action(game, playerId, type, payload = {}) {
     return sender && canPay(sender, offer.give);
   });
   updateScores(draft); checkVictory(draft);
+  return draft;
+}
+
+export function action(game, playerId, type, payload = {}) {
+  const draft = nextGame(game, playerId, type, payload);
   for (const key of Object.keys(game)) delete game[key];
   Object.assign(game, draft);
   return game;
 }
 
 export function viewGame(g, playerId) {
-  const { developmentDeck, playedDevelopment, setupOrder, setupIndex, setupVertexId, robberReturnPhase, roadBuildingReturnPhase, primaryIndex, cardDeals, ...visible } = structuredClone(g);
+  // Mask first: hidden hands and an unlimited deck's growing played-card history
+  // should never be copied once for every connected browser and bot.
+  const { developmentDeck, playedDevelopment, setupOrder, setupIndex, setupVertexId, robberReturnPhase, roadBuildingReturnPhase, primaryIndex, cardDeals, ...visible } = g;
   visible.cardDeals = viewCardDeals(cardDeals, playerId);
   visible.tradeOffers = openTradeOffers(visible).flatMap(({ declinedBy = [], ...offer }) => {
     if (offer.from === playerId) return [{ ...offer, declinedBy }];
@@ -499,13 +507,18 @@ export function viewGame(g, playerId) {
   visible.developmentRemaining = g.settings.unlimitedDevelopmentCards ? null : developmentDeck.length;
   visible.players = visible.players.map(p => p.id === playerId || g.phase === 'finished' ? p : { ...p, resources: null, development: null, score: p.visibleScore });
   visible.legal = legal(g, playerId);
-  return visible;
+  return structuredClone(visible);
 }
 
-export function tick(game, now = Date.now(), excludedPlayers = [], onMove) {
+export function needsTick(game, now = Date.now(), excludedPlayers = []) {
   if (!game.deadline || now < game.deadline || game.phase === 'finished') return false;
   // Browser-controlled bots never receive server-selected timeout moves.
   if (game.phase === 'discard' ? !Object.keys(game.discardRequired).some(id => !excludedPlayers.includes(id)) : excludedPlayers.includes(game.activePlayerId)) return false;
+  return true;
+}
+
+export function tick(game, now = Date.now(), excludedPlayers = [], onMove) {
+  if (!needsTick(game, now, excludedPlayers)) return false;
   const perform = (playerId, type, payload) => {
     const previousLog = game.log.at(-1)?.seq ?? 0;
     action(game, playerId, type, payload);
