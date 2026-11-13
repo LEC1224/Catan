@@ -5,6 +5,7 @@ import { chooseBotAction } from '../src/bots/strategy.js';
 export function simulateBots(count, difficulty, settings = {}) {
   const players = Array.from({ length: count }, (_, i) => ({ id: `bot-${i}`, name: `Bot ${i + 1}`, color: '#888' }));
   const game = createGame(players, { extendedBoard: count > 4, seed: `bots-${count}-${difficulty}`, turnSeconds: 0, ...settings });
+  const initialSupply = { ...game.bank };
   const memories = new Map(players.map(p => [p.id, {}]));
   let decisions = 0, waits = 0, now = Date.now();
   while (game.phase !== 'finished' && decisions < 15000 && waits < 10000) {
@@ -21,12 +22,21 @@ export function simulateBots(count, difficulty, settings = {}) {
     if (!moved) waits++;
     for (const r of RESOURCES) {
       if (game.bank[r] < 0 || game.players.some(p => p.resources[r] < 0)) throw new Error(`Negative ${r}`);
+      if (initialSupply[r] === null) {
+        if (game.bank[r] !== null) throw new Error(`Unlimited ${r} stock changed`);
+        continue;
+      }
       const total = game.bank[r] + game.players.reduce((n, p) => n + p.resources[r], 0);
-      if (total !== (game.settings.extendedBoard || count >= 5 ? 24 : 19)) throw new Error(`Lost ${r}`);
+      if (total !== initialSupply[r]) throw new Error(`Lost ${r}`);
     }
   }
   if (game.phase !== 'finished') throw new Error(`Bots stalled: ${difficulty}, ${count} players, turn ${game.turn}, phase ${game.phase}, scores ${game.players.map(p => p.score)}`);
-  return { count, difficulty, turns: game.turn, decisions, winner: game.winnerId };
+  const winner = game.players.find(p => p.id === game.winnerId);
+  return {
+    count, difficulty, turns: game.turn, decisions, winner: game.winnerId,
+    winnerName: winner.name, score: winner.score, extendedBoard: game.settings.extendedBoard,
+    remainingDevelopment: game.developmentDeck.length,
+  };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
