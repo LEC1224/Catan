@@ -87,6 +87,8 @@ npm run simulate:bots
 
 Benchmarks use fixed positions, warm-up and median samples. Compare on the same machine and Node version without competing workloads; the numbers are CPU timings, not FPS or skill ratings. Both benchmark scripts accept an optional module path for a saved baseline implementation. Simulations use the real masked browser policy, including finite/unlimited stock checks. A map seed reproduces the board, not the random dice or card draws. `scripts/simulate.js` remains a compatibility entry point for the same policy.
 
+See [the cleanup measurements](PERFORMANCE.md) for the recorded baseline comparison, validation and limits.
+
 - [AGENTS.md](AGENTS.md): code map, focused checks and invariants for contributors and coding agents.
 - `server/game.js`: game state, rules, legal targets, personalized views and timers.
 - `server/index.js`: guest sessions, lobby directory, permissions, sockets and persistence.
