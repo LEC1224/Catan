@@ -43,28 +43,36 @@ function roadChoices(g, id, c, difficulty) {
   const sources = new Set();
   for (const v of c.vertices.values()) if (v.building?.owner === id) sources.add(v.id);
   for (const e of c.edges.values()) if (e.owner === id) { sources.add(e.a); sources.add(e.b); }
-  const distances = extra => {
-    const dist = new Map([...sources].map(v => [v, 0])), queue = [...sources];
-    while (queue.length) {
-      const v = c.vertices.get(queue.shift()), d = dist.get(v.id);
+  const maxDistance = difficulty === 'hard' ? 5 : 3;
+  const extendDistances = (dist, queue) => {
+    for (let head = 0; head < queue.length; head++) {
+      const v = c.vertices.get(queue[head]), d = dist.get(v.id);
       if (v.building && v.building.owner !== id) continue;
       for (const eId of v.edgeIds) {
         const e = c.edges.get(eId); if (e.owner && e.owner !== id) continue;
-        const next = e.a === v.id ? e.b : e.a, cost = d + (e.owner === id || eId === extra ? 0 : 1);
-        if (cost > (difficulty === 'hard' ? 5 : 3) || cost >= (dist.get(next) ?? Infinity)) continue;
+        const next = e.a === v.id ? e.b : e.a, cost = d + (e.owner === id ? 0 : 1);
+        if (cost > maxDistance || cost >= (dist.get(next) ?? Infinity)) continue;
         dist.set(next, cost); queue.push(next);
       }
     }
     return dist;
   };
-  const sites = g.board.vertices.filter(v => !v.building && v.neighborIds.every(n => !c.vertices.get(n).building));
-  const before = distances(null);
+  const sites = g.board.vertices.filter(v => !v.building && v.neighborIds.every(n => !c.vertices.get(n).building))
+    .map(v => ({ id: v.id, value: 8 + c.siteValue(v) }));
+  const before = extendDistances(new Map([...sources].map(v => [v, 0])), [...sources]);
   return legal.map(edgeId => {
-    const after = distances(edgeId);
+    const edge = c.edges.get(edgeId), after = new Map(before), changed = [];
+    // A new road makes its endpoints equally close. Only propagate improvements from
+    // the newly reached endpoint; all other shortest paths are already in `before`.
+    const distance = Math.min(before.get(edge.a) ?? Infinity, before.get(edge.b) ?? Infinity);
+    for (const endpoint of [edge.a, edge.b]) if (distance < (after.get(endpoint) ?? Infinity)) {
+      after.set(endpoint, distance); changed.push(endpoint);
+    }
+    extendDistances(after, changed);
     let value = 0;
     for (const v of sites) {
       const d = after.get(v.id);
-      if (d !== undefined && d < (before.get(v.id) ?? Infinity)) value = Math.max(value, (8 + c.siteValue(v)) / (d + 1));
+      if (d !== undefined && d < (before.get(v.id) ?? Infinity)) value = Math.max(value, v.value / (d + 1));
     }
     // Late-game road building can still contest Longest Road when expansion is exhausted.
     if (!value && difficulty === 'hard' && !areTeammates(g, id, g.longestRoadHolder) && c.p.longestRoad >= 3 && c.p.longestRoad >= Math.max(...g.players.filter(p => p.id !== id).map(p => p.longestRoad)) - 2) value = 2;

@@ -71,3 +71,35 @@ test('Invention completes a stronger build even when a development purchase is a
     type: 'playDevelopment', cardId: 'invention', resources: { wood: 0, brick: 0, wool: 0, wheat: 1, ore: 1 },
   });
 });
+
+function roadView(connections, legalRoads, buildings = {}) {
+  const edges = connections.map(([a, b, owner]) => ({ id: `${a}-${b}`, a, b, owner }));
+  const vertices = [...new Set(connections.flatMap(([a, b]) => [a, b]))].map(id => ({
+    id, hexIds: [], building: buildings[id],
+    edgeIds: edges.filter(e => e.a === id || e.b === id).map(e => e.id),
+    neighborIds: edges.filter(e => e.a === id || e.b === id).map(e => e.a === id ? e.b : e.a),
+  }));
+  return {
+    board: { vertices, edges, hexes: [] }, phase: 'setupRoad', activePlayerId: 'bot', turn: 0,
+    players: [{ id: 'bot', resources: { wood: 0, brick: 0, wool: 0, wheat: 0, ore: 0 }, longestRoad: 0 }, { id: 'other', longestRoad: 0 }],
+    legal: { roads: legalRoads }, settings: { mode: 'individual' },
+  };
+}
+
+test('road planning does not expand through an opponent settlement', () => {
+  const game = roadView([
+    ['start', 'blocked'], ['blocked', 'opponent'], ['opponent', 'beyond'], ['beyond', 'unreachable'],
+    ['start', 'open'], ['open', 'reachable'],
+  ], ['start-blocked', 'start-open'], {
+    start: { owner: 'bot', type: 'settlement' }, opponent: { owner: 'other', type: 'settlement' },
+  });
+  assert.deepEqual(chooseBotAction(game, 'bot', 'hard', {}, () => 0.5), { type: 'placeRoad', edgeId: 'start-open' });
+});
+
+test('road planning prefers reaching a new site over connecting an already reached loop', () => {
+  const game = roadView([
+    ['start', 'a', 'bot'], ['a', 'b', 'bot'], ['b', 'c', 'bot'], ['c', 'start'],
+    ['a', 'frontier'], ['frontier', 'site'],
+  ], ['c-start', 'a-frontier'], { start: { owner: 'bot', type: 'settlement' } });
+  assert.deepEqual(chooseBotAction(game, 'bot', 'hard', {}, () => 0.5), { type: 'placeRoad', edgeId: 'a-frontier' });
+});
