@@ -13,9 +13,15 @@ const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const fail = text => { throw new Error(text); };
 const requireThat = (condition, text) => { if (!condition) fail(text); };
 const player = (g, id) => g.players.find(p => p.id === id);
-const vertex = (g, id) => g.board.vertices.find(v => v.id === id);
-const edge = (g, id) => g.board.edges.find(e => e.id === id);
-const hex = (g, id) => g.board.hexes.find(h => h.id === id);
+// Generated h/v/e IDs match their array slots. Keep a fallback for reordered
+// snapshots and custom fixtures without maintaining mutable lookup caches.
+function boardItem(items, id) {
+  const indexed = typeof id === 'string' ? items[id.slice(1)] : undefined;
+  return indexed?.id === id ? indexed : items.find(item => item.id === id);
+}
+const vertex = (g, id) => boardItem(g.board.vertices, id);
+const edge = (g, id) => boardItem(g.board.edges, id);
+const hex = (g, id) => boardItem(g.board.hexes, id);
 function addLog(g, text, cue) {
   const seq = (g.log.at(-1)?.seq ?? 0) + 1;
   g.log.push({ text, at: Date.now(), seq, ...(cue && { cue }) });
@@ -51,7 +57,7 @@ function buildBoard(settings) {
       for (let k = 0; k < 6; k++) {
         const a = h.vertexIds[k], b = h.vertexIds[(k + 1) % 6], key = [a, b].sort().join(':');
         let e = edgeMap.get(key);
-        if (!e) { e = { id: `e${edges.length}`, a, b, owner: null, hexIds: [] }; edges.push(e); edgeMap.set(key, e); vertices.find(v => v.id === a).edgeIds.push(e.id); vertices.find(v => v.id === b).edgeIds.push(e.id); vertices.find(v => v.id === a).neighborIds.push(b); vertices.find(v => v.id === b).neighborIds.push(a); }
+        if (!e) { e = { id: `e${edges.length}`, a, b, owner: null, hexIds: [] }; edges.push(e); edgeMap.set(key, e); boardItem(vertices, a).edgeIds.push(e.id); boardItem(vertices, b).edgeIds.push(e.id); boardItem(vertices, a).neighborIds.push(b); boardItem(vertices, b).neighborIds.push(a); }
         e.hexIds.push(h.id); h.edgeIds.push(e.id);
       }
       hexes.push(h);
@@ -74,7 +80,7 @@ function buildBoard(settings) {
     for (const h of productive) h.number = selected.includes(h) ? reds.pop() : rest.pop();
   } else { shuffle(numbers, random); productive.forEach((h, i) => { h.number = numbers[i]; }); }
   let coastalEdges = edges.filter(e => e.hexIds.length === 1).sort((a, b) => {
-    const av = vertices.find(v => v.id === a.a), aw = vertices.find(v => v.id === a.b), bv = vertices.find(v => v.id === b.a), bw = vertices.find(v => v.id === b.b);
+    const av = boardItem(vertices, a.a), aw = boardItem(vertices, a.b), bv = boardItem(vertices, b.a), bw = boardItem(vertices, b.b);
     return Math.atan2(av.y + aw.y, av.x + aw.x) - Math.atan2(bv.y + bw.y, bv.x + bw.x);
   });
   // Walk the real perimeter on shaped maps; angles skip around inward coastlines.
@@ -94,7 +100,7 @@ function buildBoard(settings) {
   const ports = [];
   portTypes.forEach((type, i) => {
     const e = coastalEdges[Math.floor(i * coastalEdges.length / portTypes.length)];
-    vertices.find(v => v.id === e.a).port = type; vertices.find(v => v.id === e.b).port = type;
+    boardItem(vertices, e.a).port = type; boardItem(vertices, e.b).port = type;
     ports.push({ id: `port${i}`, type, vertexIds: [e.a, e.b], edgeId: e.id });
   });
   return { map: map.id, hexes, vertices, edges, ports };
@@ -153,28 +159,45 @@ function enforceHandLimits(g) {
   }
 }
 
-function roadLength(g, id) {
-  const owned = g.board.edges.filter(e => e.owner === id);
+function roadLength(g, id, owned) {
   if (!owned.length) return 0;
   const at = new Map();
-  owned.forEach(e => { for (const v of [e.a, e.b]) { if (!at.has(v)) at.set(v, []); at.get(v).push(e); } });
+  owned.forEach((e, index) => {
+    // Players have at most 15 roads, so visited edges fit in a 32-bit mask.
+    const bit = 1 << index;
+    for (const [from, to] of [[e.a, e.b], [e.b, e.a]]) {
+      if (!at.has(from)) at.set(from, []);
+      at.get(from).push({ to, bit });
+    }
+  });
   const blocked = new Set(g.board.vertices.filter(v => v.building && v.building.owner !== id).map(v => v.id));
   let longest = 0;
   function walk(v, used, length) {
     longest = Math.max(longest, length);
-    if (length && blocked.has(v)) return;
-    for (const e of at.get(v) || []) if (!used.has(e.id)) { used.add(e.id); walk(e.a === v ? e.b : e.a, used, length + 1); used.delete(e.id); }
+    if (longest === owned.length || length && blocked.has(v)) return;
+    for (const { to, bit } of at.get(v)) if (!(used & bit)) walk(to, used | bit, length + 1);
   }
-  for (const v of at.keys()) walk(v, new Set(), 0);
+  for (const v of at.keys()) {
+    walk(v, 0, 0);
+    if (longest === owned.length) break;
+  }
   return longest;
 }
 function updateScores(g) {
+  const pieces = new Map(g.players.map(p => [p.id, { settlements: 0, cities: 0, roads: [] }]));
+  for (const { building } of g.board.vertices) if (building) {
+    const owned = pieces.get(building.owner);
+    if (!owned) continue;
+    if (building.type === 'settlement') owned.settlements++;
+    else if (building.type === 'city') owned.cities++;
+  }
+  for (const road of g.board.edges) if (road.owner) pieces.get(road.owner)?.roads.push(road);
   for (const p of g.players) {
-    const buildings = g.board.vertices.filter(v => v.building?.owner === p.id);
-    p.settlementsLeft = 5 - buildings.filter(v => v.building.type === 'settlement').length;
-    p.citiesLeft = 4 - buildings.filter(v => v.building.type === 'city').length;
-    p.roadsLeft = 15 - g.board.edges.filter(e => e.owner === p.id).length;
-    p.longestRoad = roadLength(g, p.id);
+    const owned = pieces.get(p.id);
+    p.settlementsLeft = 5 - owned.settlements;
+    p.citiesLeft = 4 - owned.cities;
+    p.roadsLeft = 15 - owned.roads.length;
+    p.longestRoad = roadLength(g, p.id, owned.roads);
   }
   const previousRoad = g.longestRoadHolder, maximum = Math.max(...g.players.map(p => p.longestRoad));
   const leaders = g.players.filter(p => p.longestRoad === maximum);
