@@ -133,6 +133,68 @@ function ScoreTimeline({ players, summary, target, onSeek }) {
   );
 }
 
+function DiceRollChart({ counts, rollCount }) {
+  const bins = counts.map((observed, i) => {
+    const total = i + 2;
+    return { total, observed, expected: rollCount * (6 - Math.abs(7 - total)) / 36, x: 10 * i + 5 };
+  });
+  const peak = Math.max(rollCount / 6, ...counts);
+  const minStep = Math.max(1, peak / 4);
+  const magnitude = 10 ** Math.floor(Math.log10(minStep));
+  const step = [1, 2, 5, 10].map(n => n * magnitude).find(n => n >= minStep);
+  const ticks = Array.from({ length: Math.ceil(peak / step) + 1 }, (_, i) => i * step);
+  const y = value => 100 * (1 - value / ticks.at(-1));
+  return (
+    <>
+      <ul className="dice-chart-legend" aria-label="Chart legend">
+        <li><span className="dice-chart-match-key" aria-hidden="true" /> Match rolls</li>
+        <li><span className="dice-chart-fair-key" aria-hidden="true" /> Fair dice</li>
+      </ul>
+      <div className="dice-chart" aria-hidden="true">
+        <span className="dice-chart-unit">Rolls</span>
+        <div className="dice-chart-scale">
+          {ticks.toReversed().map(value => <span key={value}>{value}</span>)}
+        </div>
+        <svg className="dice-chart-plot" viewBox="0 0 110 100" preserveAspectRatio="none">
+          {ticks.map(value => <line key={value} x1="0" x2="110" y1={y(value)} y2={y(value)} />)}
+          {bins.map(({ total, observed, x }) => <rect key={total} x={x - 3} y={y(observed)} width="6" height={100 - y(observed)} />)}
+          <polyline points={bins.map(({ x, expected }) => `${x},${y(expected)}`).join(" ")} />
+        </svg>
+        <div className="dice-chart-totals">
+          {bins.map(({ total }) => <span key={total}>{total}</span>)}
+        </div>
+        <span className="dice-chart-label">Dice total</span>
+      </div>
+      <details className="dice-chart-data">
+        <summary>Roll counts by total</summary>
+        <table>
+          <thead><tr><th scope="col">Dice total</th><th scope="col">Match rolls</th><th scope="col">Fair dice (expected)</th></tr></thead>
+          <tbody>
+            {bins.map(({ total, observed, expected }) => (
+              <tr key={total}><th scope="row">{total}</th><td>{observed}</td><td>{expected.toLocaleString("en", { maximumFractionDigits: 2 })}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+    </>
+  );
+}
+
+function DiceDistribution({ counts, partial }) {
+  const labelId = useId();
+  const rollCount = counts.reduce((sum, count) => sum + count, 0);
+  return (
+    <section className="results-panel dice-distribution" aria-labelledby={labelId}>
+      <header className="results-panel-title">
+        <h2 id={labelId}>Dice distribution</h2>
+        {rollCount > 0 && <span className="results-numbers">{rollCount} {partial ? "recorded " : ""}{rollCount === 1 ? "roll" : "rolls"}</span>}
+      </header>
+      {rollCount > 0 ? <DiceRollChart counts={counts} rollCount={rollCount} />
+        : <p className="dice-chart-empty">{partial ? "No dice rolls were recorded." : "No dice were rolled."}</p>}
+    </section>
+  );
+}
+
 function KeyMoments({ moments, players, onSeek, activeStep, embedded = false }) {
   const id = useId();
   const byStep = new Map();
@@ -234,11 +296,14 @@ export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite
         {summary?.history === "partial" && <p className="results-note">Recording began during {turnLabel(summary.timeline[0].turn).toLowerCase()}. Earlier moves weren’t recorded.</p>}
         {summary?.history === "unavailable" && <p className="results-note">Move history wasn’t recorded for this match.</p>}
         <div className={`results-dashboard${summary?.timeline?.length ? " has-history" : ""}`}>
-          {summary?.scores?.length > 0 && <ScoreBreakdown scores={summary.scores} players={game.players} winnerId={game.winnerId} />}
-          {summary?.timeline?.length > 0 && <>
-              <ScoreTimeline players={game.players} summary={summary} target={game.settings.victoryPoints} onSeek={canReplay ? openReplay : undefined} />
-              <KeyMoments moments={summary.moments} players={game.players} onSeek={canReplay ? openReplay : undefined} />
-          </>}
+          <div className="results-column">
+            {summary?.scores?.length > 0 && <ScoreBreakdown scores={summary.scores} players={game.players} winnerId={game.winnerId} />}
+            {summary?.diceCounts && <DiceDistribution counts={summary.diceCounts} partial={summary.history === "partial"} />}
+          </div>
+          {summary?.timeline?.length > 0 && <div className="results-column">
+            <ScoreTimeline players={game.players} summary={summary} target={game.settings.victoryPoints} onSeek={canReplay ? openReplay : undefined} />
+            <KeyMoments moments={summary.moments} players={game.players} onSeek={canReplay ? openReplay : undefined} />
+          </div>}
         </div>
       </div>}
     </main>

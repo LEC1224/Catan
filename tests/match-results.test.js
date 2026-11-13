@@ -80,14 +80,17 @@ test('match summary credits actual points and preserves when they changed', () =
   assert.ok(['city', 'lead', 'route', 'army', 'win'].every(kind => summary.moments.some(moment => moment.kind === kind)));
   assert.ok(summary.moments.every(moment => recording.frames[moment.step]?.turn === moment.turn));
   assert.equal(JSON.stringify(recording).includes('private-card-id'), false);
-  assert.equal(matchSummary(structuredClone(game)).history, 'unavailable');
+  const unrecorded = matchSummary(structuredClone(game));
+  assert.equal(unrecorded.history, 'unavailable');
+  assert.equal(unrecorded.diceCounts, null);
 });
 
 test('a timeout records the roll before the same tick advances the turn', t => {
   const game = createGame(players, { seed: 'replay-dice' });
-  Object.assign(game, { phase: 'roll', turn: 1 });
+  Object.assign(game, { phase: 'action', turn: 1, dice: [1, 1] });
   const recording = beginRecording(game, true);
-  const dice = t.mock.method(crypto, 'randomInt', () => 3);
+  record(game, recording, players[0].id, 'endTurn');
+  const dice = t.mock.method(crypto, 'randomInt', () => 6);
   syncBuiltinESMExports();
   try {
     tick(game, game.deadline, [], (id, type, seq) => appendFrame(recording, captureMove(game, id, type, seq, true)));
@@ -95,10 +98,14 @@ test('a timeout records the roll before the same tick advances the turn', t => {
     dice.mock.restore();
     syncBuiltinESMExports();
   }
-  assert.deepEqual(recording.frames.slice(1).map(({ turn, dice, move }) => [turn, dice, move.type]), [
-    [1, [3, 3], 'rollDice'], [2, null, 'endTurn'],
+  assert.deepEqual(recording.frames.slice(2).map(({ turn, dice, move }) => [turn, dice, move.type]), [
+    [2, [6, 6], 'rollDice'], [3, null, 'endTurn'],
   ]);
   assert.equal(recording.positions.length, 1, 'the two actions reuse the board position');
+  game.phase = 'finished';
+  const summary = matchSummary(game, recording);
+  assert.equal(summary.history, 'partial');
+  assert.deepEqual(summary.diceCounts, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 'the opening snapshot is not a recorded roll');
 });
 
 test('guests share the replay cursor, reconstruct board state, and resume it after restart', async t => {
@@ -139,7 +146,14 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   assert.equal(host.lobby.summary, null);
   assert.equal(Object.hasOwn(host.lobby, 'recording'), false);
   const winner = currentClient();
-  lobby.game.phase = 'action';
+  const dice = t.mock.method(crypto, 'randomInt', () => 3);
+  syncBuiltinESMExports();
+  try {
+    assert.ok((await rpc(winner, 'gameAction', { type: 'rollDice' })).ok);
+  } finally {
+    dice.mock.restore();
+    syncBuiltinESMExports();
+  }
   const player = lobby.game.players.find(p => p.id === winner.playerId);
   Object.assign(player.resources, { wheat: 2, ore: 3 });
   player.development.push({ id: 'private-replay-card', type: 'knight', turnBought: 0 });
@@ -148,8 +162,9 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   await rpc(guest, 'getDirectory');
   assert.equal(guest.lobby.status, 'finished');
   assert.equal(guest.lobby.summary.history, 'complete');
-  assert.equal(guest.lobby.summary.frameCount, 10);
+  assert.equal(guest.lobby.summary.frameCount, 11);
   assert.equal(guest.lobby.summary.scores.find(s => s.id === winner.playerId).total, 3);
+  assert.deepEqual(guest.lobby.summary.diceCounts, [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 'the city upgrade retains the same dice but does not count as a roll');
   const lastStep = guest.lobby.summary.frameCount - 1;
   assert.equal((await loadRecording(outsider)).ok, false);
   assert.equal((await loadRecording(guest, 'previous-match')).ok, false);
@@ -203,6 +218,7 @@ test('guests share the replay cursor, reconstruct board state, and resume it aft
   await rpc(returningGuest, 'getDirectory');
   assert.deepEqual(returningGuest.lobby.replay, savedCursor);
   assert.equal(returningHost.lobby.summary.frameCount, lastStep + 1);
+  assert.deepEqual(returningHost.lobby.summary.diceCounts, guest.lobby.summary.diceCounts);
   assert.deepEqual((await loadRecording(returningGuest)).recording, loaded.recording);
   assert.ok((await rpc(returningHost, 'returnToLobby')).ok);
   assert.equal(returningHost.lobby.summary, null);

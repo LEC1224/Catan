@@ -77,6 +77,7 @@ export function matchSummary(game, recording) {
   if (game.phase !== 'finished') return null;
   if (finishedSummaries.has(game)) return finishedSummaries.get(game);
   const frames = hasRecording(recording) ? recording.frames : [];
+  const diceCounts = frames.length ? Array(11).fill(0) : null;
   const names = new Map(game.players.map(p => [p.id, p.name]));
   const timeline = [], moments = [];
   let pairedTurns = 0, previous, lastLeaders, firstCity = false;
@@ -84,6 +85,8 @@ export function matchSummary(game, recording) {
     moments.push({ step, turn: frame.turn, kind, text, playerId });
   }
   for (const [step, frame] of frames.entries()) {
+    // Other moves (including paired turns) can carry the last roll's dice.
+    if (frame.move.type === 'rollDice' && frame.dice) diceCounts[frame.dice[0] + frame.dice[1] - 2]++;
     const totals = frame.points.map(p => p.total);
     const leaders = scoreLeaders(totals);
     const newTurn = frame.turn !== previous?.turn;
@@ -121,7 +124,7 @@ export function matchSummary(game, recording) {
     turns: game.turn, pairedTurns, frameCount: frames.length,
     history: frames.length ? (recording.partial ? 'partial' : 'complete') : 'unavailable',
     scores: points(game).map((score, i) => ({ ...score, id: game.players[i].id })),
-    timeline, moments,
+    timeline, moments, diceCounts,
   };
   finishedSummaries.set(game, summary);
   return summary;
