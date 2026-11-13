@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { io } from "socket.io-client";
 import { attachBotController } from "./bots/controller.js";
+import { createActionGate } from "./action-gate.js";
 import {
   Anchor,
   ArrowRight,
@@ -404,6 +405,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
     [compact, setCompact] = useState(() => matchMedia("(max-width: 950px)").matches),
     [activityPreference, setActivityPreference] = useState(null);
   const tradeTrigger = useRef(null), devTrigger = useRef(null), matchPage = useRef(null);
+  const [runAction] = useState(createActionGate);
   useLayoutEffect(() => {
     if (chatFocus) matchPage.current?.querySelector(".chat-input input")?.focus({ preventScroll: true });
   }, [chatFocus]);
@@ -432,7 +434,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
     );
   if (game.phase === "finished")
     return <MatchResults key={lobby.matchId} {...{ lobby, meId, command, busy, onCopyInvite, onLeave, soundControl, fullscreenControl }} Board={Board} resourceMeta={META} />;
-  const action = async (type, payload = {}) => {
+  const action = (type, payload = {}) => runAction(async () => {
     if (type !== "playDevelopment") setDevId(null);
     const result = await command("gameAction", { type, ...payload });
     if (
@@ -441,7 +443,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
     )
       setMode(null);
     return result;
-  };
+  });
   const canAct = myTurn && game.phase === "action" && !game.roadBuildingRemaining;
   const trading = trade && canAct;
   const canRoll = myTurn && game.phase === "roll" && !game.roadBuildingRemaining && !busy;

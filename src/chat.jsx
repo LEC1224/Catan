@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MessageSquare, Send } from "lucide-react";
+import { createActionGate } from "./action-gate.js";
 
 export function Chat({ lobby, command, compact = false }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const inFlight = useRef(false), draftVersion = useRef(0);
+  const [sendMessage] = useState(createActionGate);
+  const draftVersion = useRef(0);
   const messages = useRef(null);
   const lastMessage = lobby.messages?.at(-1);
   useEffect(() => {
@@ -32,19 +34,19 @@ export function Chat({ lobby, command, compact = false }) {
         onSubmit={async (event) => {
           event.preventDefault();
           const message = text.trim();
-          if (!message || inFlight.current) return;
-          const version = draftVersion.current;
-          inFlight.current = true;
-          setSending(true);
-          try {
-            // A delayed acknowledgement belongs to the sent draft, not text typed meanwhile.
-            if (await command("chat", { text: message })) {
-              if (draftVersion.current === version) setText("");
+          if (!message) return;
+          await sendMessage(async () => {
+            const version = draftVersion.current;
+            setSending(true);
+            try {
+              // A delayed acknowledgement belongs to the sent draft, not text typed meanwhile.
+              if (await command("chat", { text: message })) {
+                if (draftVersion.current === version) setText("");
+              }
+            } finally {
+              setSending(false);
             }
-          } finally {
-            inFlight.current = false;
-            setSending(false);
-          }
+          });
         }}
       >
         <input
