@@ -1,5 +1,6 @@
 // Browser-only decision policy. Accepts exactly one player's masked view, never server state.
 import { bankTradeRate, openTradeOffers, playerTradesAvailable, resourceStock } from '../../shared/trades.js';
+import { areTeammates, gameTeams, TEAM_MIN_POINTS } from '../../shared/teams.js';
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COST = {
@@ -66,7 +67,7 @@ function roadChoices(g, id, c, difficulty) {
       if (d !== undefined && d < (before.get(v.id) ?? Infinity)) value = Math.max(value, (8 + c.siteValue(v)) / (d + 1));
     }
     // Late-game road building can still contest Longest Road when expansion is exhausted.
-    if (!value && difficulty === 'hard' && c.p.longestRoad >= 3 && c.p.longestRoad >= Math.max(...g.players.filter(p => p.id !== id).map(p => p.longestRoad)) - 2) value = 2;
+    if (!value && difficulty === 'hard' && !areTeammates(g, id, g.longestRoadHolder) && c.p.longestRoad >= 3 && c.p.longestRoad >= Math.max(...g.players.filter(p => p.id !== id).map(p => p.longestRoad)) - 2) value = 2;
     return { action: { type: 'placeRoad', edgeId }, score: value };
   });
 }
@@ -99,9 +100,12 @@ function goals(g, id, c, difficulty) {
   if (c.p.settlementsLeft || difficulty === 'hard') for (const road of roadChoices(g, id, c, difficulty)) {
     if (road.score > 0) options.push({ ...road, score: 9 + road.score * 0.4 });
   }
-  if (g.developmentRemaining !== 0) options.push({ action: { type: 'buyDevelopment' }, score: 17 + (c.p.knights >= 2 ? 5 : 0) });
+  if (g.developmentRemaining !== 0) options.push({ action: { type: 'buyDevelopment' }, score: 17 + (c.p.knights >= 2 && !areTeammates(g, id, g.largestArmyHolder) ? 5 : 0) });
   // Prioritize the point that ends the game.
-  if (c.p.score >= g.settings.victoryPoints - 1) for (const o of options) if (['placeSettlement', 'upgradeCity'].includes(o.action.type)) o.score += 100;
+  const teammate = g.players.find(p => areTeammates(g, id, p.id));
+  const nearWin = teammate ? teammate.visibleScore >= TEAM_MIN_POINTS && c.p.score >= TEAM_MIN_POINTS - 1 && c.p.score + teammate.visibleScore >= g.settings.teamVictoryPoints - 1
+    : c.p.score >= g.settings.victoryPoints - 1;
+  if (nearWin) for (const o of options) if (['placeSettlement', 'upgradeCity'].includes(o.action.type)) o.score += 100;
   return options;
 }
 
@@ -111,7 +115,10 @@ function playCard(g, id, c, cost, difficulty) {
     if (card.turnBought >= g.turn || card.type === 'victoryPoint') continue;
     const a = { type: 'playDevelopment', cardId: card.id };
     if (card.type === 'knight') {
-      const blocked = c.hexes.get(g.robberHexId).vertexIds.some(v => c.vertices.get(v).building?.owner === id);
+      const blocked = c.hexes.get(g.robberHexId).vertexIds.some(v => {
+        const owner = c.vertices.get(v).building?.owner;
+        return owner === id || areTeammates(g, id, owner);
+      });
       if (blocked || g.phase === 'action' || difficulty === 'easy') return a;
     }
     if (g.phase !== 'action') continue;
@@ -130,10 +137,10 @@ function playCard(g, id, c, cost, difficulty) {
       // Public production is an estimate, not access to opponents' hands.
       const estimate = empty();
       for (const v of c.vertices.values()) if (v.building && v.building.owner !== id) for (const hId of v.hexIds) {
-        const h = c.hexes.get(hId); if (h.terrain !== 'desert') estimate[h.terrain] += pips(h) * (v.building.type === 'city' ? 2 : 1);
+        const h = c.hexes.get(hId); if (h.terrain !== 'desert') estimate[h.terrain] += pips(h) * (v.building.type === 'city' ? 2 : 1) * (areTeammates(g, id, v.building.owner) ? -1 : 1);
       }
       const resource = [...RESOURCES].sort((a, b) => estimate[b] + Math.max(0, (cost[b] || 0) - c.p.resources[b]) * 2 - estimate[a] - Math.max(0, (cost[a] || 0) - c.p.resources[a]) * 2)[0];
-      if (g.players.some(p => p.id !== id && p.resourceCount > 0)) return { ...a, resource };
+      if (g.players.some(p => p.id !== id && !areTeammates(g, id, p.id) && p.resourceCount > 0) && (g.settings.mode !== 'teams' || estimate[resource] > 0)) return { ...a, resource };
     }
   }
   return null;
@@ -162,8 +169,12 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
       const value = map => RESOURCES.reduce((n, r) => n + (map[r] || 0) * (1 + 2 / (1 + p.resources[r]) + (c.production[r] === 0 ? 0.7 : 0)), 0);
       const good = incoming.map(offer => {
         const sender = g.players.find(other => other.id === offer.from);
-        return { id: offer.id, surplus: pays(p.resources, offer.want) && (difficulty === 'easy' || sender.visibleScore < g.settings.victoryPoints - 2)
-          ? value(offer.give) - value(offer.want) * (difficulty === 'easy' ? 0.85 : 1.05) : 0 };
+        const partner = areTeammates(g, id, sender.id);
+        const rivalTeam = gameTeams(g).find(team => team.id === sender.teamId);
+        const nearVictory = rivalTeam ? rivalTeam.players.every(p => p.visibleScore >= TEAM_MIN_POINTS - 1) && rivalTeam.players.reduce((n, p) => n + p.visibleScore, 0) >= g.settings.teamVictoryPoints - 2
+          : sender.visibleScore >= g.settings.victoryPoints - 2;
+        return { id: offer.id, surplus: pays(p.resources, offer.want) && (partner || difficulty === 'easy' || !nearVictory)
+          ? value(offer.give) - value(offer.want) * (partner ? 0.8 : difficulty === 'easy' ? 0.85 : 1.05) : 0 };
       }).sort((a, b) => b.surplus - a.surplus)[0];
       return good.surplus > 0 ? { type: 'acceptTrade', offerId: good.id } : { type: 'declineTrade', offerId: incoming[0].id };
     }
@@ -180,11 +191,11 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
     const score = h.vertexIds.reduce((n, vId) => {
       const b = c.vertices.get(vId).building; if (!b) return n;
       const owner = g.players.find(p => p.id === b.owner);
-      return n + (b.owner === id ? -40 : (1 + (difficulty === 'hard' ? owner.visibleScore : 0)) * (b.type === 'city' ? 2 : 1));
+      return n + (b.owner === id || areTeammates(g, id, b.owner) ? -40 : (1 + (difficulty === 'hard' ? owner.visibleScore : 0)) * (b.type === 'city' ? 2 : 1));
     }, 0) * pips(h);
     return { action: { type: 'moveRobber', hexId }, score };
   }), difficulty, random)?.action || null;
-  if (g.phase === 'steal') return pick(g.stealTargets.map(targetId => ({ action: { type: 'steal', targetId }, score: g.players.find(p => p.id === targetId).visibleScore * 2 })), difficulty, random)?.action || null;
+  if (g.phase === 'steal') return pick(g.stealTargets.map(targetId => ({ action: { type: 'steal', targetId }, score: areTeammates(g, id, targetId) ? -100 : g.players.find(p => p.id === targetId).visibleScore * 2 })), difficulty, random)?.action || null;
   if (g.phase !== 'action') return null;
   const own = trading && offers.find(offer => offer.from === id);
   if (own) {

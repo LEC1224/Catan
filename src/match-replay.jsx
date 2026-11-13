@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Dice1, Dice2, Dice3, Dice4, Dice5, Dice6, Layers, Route, ScrollText, Shield, Trophy, Users } from "lucide-react";
 import { replayBoard } from "../shared/match-replay.js";
+import { teamName } from "../shared/teams.js";
+import { TeamScores } from "./team-scores.jsx";
 import { Chat } from "./chat.jsx";
 import { moveLabel, ReplayControls, turnLabel } from "./replay-timeline.jsx";
 import "./match-replay.css";
@@ -27,6 +29,7 @@ function ReplayPlayers({ players, frame }) {
               <div className="replay-player-name">
                 <PlayerMark player={player} />
                 <strong>{player.name}</strong>
+                {player.teamId && <small>{teamName(player.teamId)}</small>}
                 {player.id === frame.active && frame.phase !== "finished" && <span className="replay-active-label">Active</span>}
                 <b>{frame.points[i].total}</b>
               </div>
@@ -109,7 +112,10 @@ export function ReplayView({ lobby, command, busy, Board, resourceMeta, recordin
           loadState={recording === undefined ? "loading" : recording === null ? "failed" : "ready"} onRetry={onRetry} />
       </section>
       <aside className="replay-rail">
-        <ReplayPlayers players={players} frame={frame} />
+        <div className="replay-roster">
+          <TeamScores game={{ ...game, phase: frame.phase }} points={frame.points} compact />
+          <ReplayPlayers players={players} frame={frame} />
+        </div>
         <section className="results-panel replay-activity" aria-label="Replay discussion">
           <div className="replay-panel-tabs" role="group" aria-label="Replay sidebar">
             <button type="button" className="results-command" aria-pressed={panel === "chat"} onClick={() => setPanel("chat")}>Chat</button>

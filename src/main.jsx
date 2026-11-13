@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { Sheep } from "./sheep-icon.js";
 import { resourceName } from "../shared/resource-names.js";
+import { teamName } from "../shared/teams.js";
+import { TeamScores } from "./team-scores.jsx";
 import { gameLogText } from "./game-log-text.js";
 import "./styles.css";
 import { HomeScreen, LobbyHeader, WaitingRoom } from "./lobby.jsx";
@@ -533,7 +535,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
         <div className="match-top-controls">
           <div className="match-status">
             <span>Turn {game.turn || 1}</span>
-            <span className="match-target"><Trophy size={14} aria-hidden="true" /> {game.settings.victoryPoints} to win</span>
+            <span className="match-target"><Trophy size={14} aria-hidden="true" /> {game.settings.mode === "teams" ? `${game.settings.teamVictoryPoints} per team to win` : `${game.settings.victoryPoints} to win`}</span>
             {game.pairedPlayer && <span className="paired-status">Paired turn</span>}
           </div>
           <div className="match-tools">
@@ -557,6 +559,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
       </header>
       <div className="match-stage">
         <aside id="match-players" className={`players-panel ${drawer === "players" ? "drawer-open" : ""}`} aria-label="Players and bank">
+          <TeamScores game={game} compact />
           <div className="panel-heading">
             <Users size={16} />
             <h3>Players</h3>
@@ -577,6 +580,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
                     <div>
                       <strong>{p.name}</strong>
                       <small>
+                        {p.teamId && `${teamName(p.teamId)} · `}
                         {p.id === meId
                           ? "You"
                           : lp?.isBot
@@ -765,7 +769,7 @@ function Guide({ onClose, feedback }) {
             <Flag size={19} /> The goal
           </h3>
           <p>
-            Reach the configured victory point target on your own turn.
+            In individual games, reach the configured victory point target on your own turn.
             Settlements are worth 1 point, cities 2. Longest Route and Largest
             Army are worth 2 each. Hidden victory cards add 1.
           </p>
@@ -777,6 +781,13 @@ function Guide({ onClose, feedback }) {
             beside their settlements (1) and cities (2). Then trade, build and
             buy cards in any order. End your turn when you’re done. If the
             timer runs out, the game makes required choices automatically.
+          </p>
+          <h3><Users size={19} /> 2v2</h3>
+          <p>
+            Four players form two teams and alternate turns. Reach the team target
+            (16 by default), with at least 6 points per teammate, on either teammate’s turn.
+            Hidden victory cards count. Hands, roads, ports and awards are individual;
+            trade using the normal rules. The robber and Monopoly can affect teammates.
           </p>
           <h3>
             <Home size={19} /> Initial placement

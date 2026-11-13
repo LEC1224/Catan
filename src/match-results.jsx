@@ -2,6 +2,8 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { Building2, ChartNoAxesCombined, ChevronRight, Copy, Film, Flag, House, LogOut, RotateCcw, Route, ScrollText, Shield, Trophy } from "lucide-react";
 import { PlayerMark, ReplayView } from "./match-replay.jsx";
 import { turnLabel } from "./replay-timeline.jsx";
+import { gameTeams } from "../shared/teams.js";
+import { TeamScores } from "./team-scores.jsx";
 import "./match-results.css";
 
 const columns = [
@@ -13,9 +15,9 @@ const columns = [
 ];
 const momentIcons = { city: Building2, route: Route, army: Shield, lead: Flag, win: Trophy };
 
-function ScoreBreakdown({ scores, players, winnerId }) {
+function ScoreBreakdown({ scores, players, winnerIds }) {
   const sorted = [...scores].sort((a, b) =>
-    Number(b.id === winnerId) - Number(a.id === winnerId) || b.total - a.total);
+    Number(winnerIds.includes(b.id)) - Number(winnerIds.includes(a.id)) || b.total - a.total);
   return (
     <section className="results-panel score-breakdown" aria-labelledby="score-title">
       <h2 id="score-title">Points by player</h2>
@@ -35,8 +37,8 @@ function ScoreBreakdown({ scores, players, winnerId }) {
               const player = players.find(p => p.id === score.id);
               if (!player) return null;
               return (
-                <tr key={player.id} data-winner={player.id === winnerId}>
-                  <th scope="row"><div><PlayerMark player={player} /><span>{player.name}</span>{player.id === winnerId && <Trophy size={14} aria-label="Winner" />}</div></th>
+                <tr key={player.id} data-winner={winnerIds.includes(player.id)}>
+                  <th scope="row"><div><PlayerMark player={player} /><span>{player.name}</span>{winnerIds.includes(player.id) && <Trophy size={14} aria-label="Winner" />}</div></th>
                   {columns.map(([key]) => <td key={key} data-zero={!score[key]}>{score[key]}</td>)}
                   <td><strong>{score.total}</strong></td>
                 </tr>
@@ -237,6 +239,12 @@ export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite
   const page = useRef(null);
   const { game, summary, replay, matchId } = lobby;
   const winner = game.players.find(p => p.id === game.winnerId);
+  const teams = gameTeams(game);
+  const winningTeam = teams.find(team => team.id === game.winnerTeamId);
+  const winnerIds = winningTeam ? winningTeam.players.map(p => p.id) : [game.winnerId];
+  const target = teams.length ? game.settings.teamVictoryPoints : game.settings.victoryPoints;
+  const chartPlayers = teams.length ? teams.map(team => ({ id: team.id, name: team.name, color: team.players[0].color })) : game.players;
+  const chartSummary = teams.length && summary ? { ...summary, timeline: summary.timeline.map(point => ({ ...point, totals: point.teamTotals })) } : summary;
   const host = lobby.hostId === meId;
   const inReplay = !!replay && !stayOnResults;
   const canReplay = summary?.frameCount > 1;
@@ -284,12 +292,13 @@ export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite
         <header className="victory-banner">
           <div className="victory-crest" aria-hidden="true"><Trophy size={42} strokeWidth={1.5} /></div>
           <div className="victory-name">
-            <h1 id="result-title" tabIndex={-1}>{winner ? `${winner.name} wins` : "Match complete"}</h1>
-            {winner && <p><PlayerMark player={winner} /><strong>{winner.score}</strong> victory points</p>}
+            <h1 id="result-title" tabIndex={-1}>{winningTeam ? `${winningTeam.name} wins` : winner ? `${winner.name} wins` : "Match complete"}</h1>
+            {winningTeam ? <p>{winningTeam.players.map(p => p.name).join(" & ")} · <strong>{winningTeam.players.reduce((n, p) => n + p.score, 0)}</strong> victory points</p>
+              : winner && <p><PlayerMark player={winner} /><strong>{winner.score}</strong> victory points</p>}
           </div>
           <dl className="victory-metrics">
             <div><dt>Turns</dt><dd>{summary?.turns ?? game.turn}</dd>{summary?.history === "complete" && summary.pairedTurns > 0 && <small>{summary.pairedTurns} paired</small>}</div>
-            <div><dt>Points to win</dt><dd>{game.settings.victoryPoints}</dd></div>
+            <div><dt>{teams.length ? "Team target" : "Points to win"}</dt><dd>{target}</dd></div>
             <div><dt>Players</dt><dd>{game.players.length}</dd></div>
           </dl>
         </header>
@@ -297,11 +306,12 @@ export function MatchResults({ lobby, meId, command, busy, onLeave, onCopyInvite
         {summary?.history === "unavailable" && <p className="results-note">Move history wasn’t recorded for this match.</p>}
         <div className={`results-dashboard${summary?.timeline?.length ? " has-history" : ""}`}>
           <div className="results-column">
-            {summary?.scores?.length > 0 && <ScoreBreakdown scores={summary.scores} players={game.players} winnerId={game.winnerId} />}
+            <TeamScores game={game} />
+            {summary?.scores?.length > 0 && <ScoreBreakdown scores={summary.scores} players={game.players} winnerIds={winnerIds} />}
             {summary?.diceCounts && <DiceDistribution counts={summary.diceCounts} partial={summary.history === "partial"} />}
           </div>
           {summary?.timeline?.length > 0 && <div className="results-column">
-            <ScoreTimeline players={game.players} summary={summary} target={game.settings.victoryPoints} onSeek={canReplay ? openReplay : undefined} />
+            <ScoreTimeline players={chartPlayers} summary={chartSummary} target={target} onSeek={canReplay ? openReplay : undefined} />
             <KeyMoments moments={summary.moments} players={game.players} onSeek={canReplay ? openReplay : undefined} />
           </div>}
         </div>

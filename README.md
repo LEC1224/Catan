@@ -44,10 +44,12 @@ Lobby and game sound effects start after your first interaction. If you need to 
 
 | Setting | Default | Meaning |
 |---|---|---|
+| Game mode | Individual | Choose Individual or 2v2. Teams work on every board. |
 | Seats | 4 | Between 2 and 6 |
 | Board | Classic for 2–4 seats; Expanded for 5–6 | Classic (19), Expanded (30), The Narrows (19: two halves joined by one land hex), or Sweden (30: a long, connected mainland with a detailed beach outline). 30-hex boards and all 5–6-player matches use expanded supplies. |
 | Lock desert to center | Off | Places a desert on the hex nearest the map's center and starts the robber there. On Expanded, it uses the left middle hex and shuffles the second desert with the other tiles. |
 | Points to win | 15 for 2 seats; 12 for 3; 10 for 4–6 | 3–20 |
+| Team points to win | 16 | In 2v2, a combined target of 12–30 with at least 6 points per teammate |
 | Discard threshold | 9 for 2 seats; 8 for 3; 7 for 4–6 | On a seven, hands above this size discard half |
 | Hard hand limit | Off | Optional house rule; excess resources automatically return, taking from the largest pile first |
 | Thinking time | 120 seconds | 0 disables the clock; otherwise 30–600 seconds per decision phase |
@@ -60,6 +62,8 @@ Lobby and game sound effects start after your first interaction. If you need to 
 | Map seed | Random | Reproduce terrain/number/port setup; dice and card draws remain random |
 
 Two-player play uses ordinary core rules as a **casual house variant**, not the official neutral-settlement/trade-token two-player scenario. Choosing a small board for 5–6 is also a deliberately crowded house variant. Expanded boards and all games with 5–6 actual players use 24 cards per resource when resources are finite, and 34 cards per development deck; choosing the small board for 5–6 changes only the island. Timer expiry completes mandatory choices automatically and ends action phases; ordinary trades and builds do not refill the action-phase clock.
+
+**2v2:** exactly four players, two on each team. The host assigns Team A or Team B beside each player, including bots. Changing teams resets guest readiness. Teams alternate turns, so partners sit two turns apart; the starting seat is still random. The first team to reach the combined target, with each teammate at 6 or more points, wins on either teammate's turn. Hidden victory cards count toward both requirements. Live team totals show visible points only; hands and hidden points remain private even from partners. Roads, ports, piece limits and awards belong to individual players. Trades use the normal rules, and the robber and Monopoly can affect teammates. Results and replays show team totals and credit both winners.
 
 ## Implemented rules
 
@@ -101,4 +105,6 @@ The server retains authority over dice, cards, rules and state. Bot actions requ
 
 Implementation: `src/bots/strategy.js` contains the policy; `worker.js` evaluates masked observations; `controller.js` runs and reconnects the browser worker. Bot memory is lightweight and resets on reload/control handoff; saved matches retain the game state. Run `node scripts/simulate-bots.js` for complete headless games using the same browser policy.
 
-There are no spectators, ranked matchmaking, account recovery or expansion scenarios beyond the configured larger base-game board. Original generated artwork is used; this is an unofficial implementation.
+Bots recognize teammates when considering trades, robber targets, Monopoly and competing for awards. They still use only their own masked view. These team heuristics are not a coordinated planning system.
+
+There are no spectators, ranked matchmaking, account recovery or ship-based expansion scenarios. Original generated artwork is used; this is an unofficial implementation.

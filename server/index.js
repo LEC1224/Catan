@@ -9,15 +9,16 @@ import { createGame, action, viewGame, tick } from './game.js';
 import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary, viewReplay } from './match-recording.js';
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
 import { boardMap } from '../shared/board-maps.js';
+import { DEFAULT_TEAM_TARGET, TEAM_IDS, teamSeating } from '../shared/teams.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
-export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), mode: 'individual', teamVictoryPoints: DEFAULT_TEAM_TARGET, lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 function cleanText(value, max, fallback = '') { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) || fallback : fallback; }
 export function validateSettings(input = {}, previous) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid game settings.');
   const overrides = {};
-  const ranges = { maxPlayers: [2, 6], victoryPoints: [3, 20], discardThreshold: [3, 30], hardHandLimit: [0, 50], turnSeconds: [0, 600] };
+  const ranges = { maxPlayers: [2, 6], victoryPoints: [3, 20], teamVictoryPoints: [12, 30], discardThreshold: [3, 30], hardHandLimit: [0, 50], turnSeconds: [0, 600] };
   for (const [key, [min, max]] of Object.entries(ranges)) if (key in input) {
     const value = input[key];
     if (!Number.isInteger(value) || value < min || value > max || (key === 'turnSeconds' && value > 0 && value < 30)) throw Error(`Invalid ${key} setting.`);
@@ -28,6 +29,14 @@ export function validateSettings(input = {}, previous) {
     overrides[key] = input[key];
   }
   if ('seed' in input) overrides.seed = cleanText(input.seed, 64);
+  if ('mode' in input) {
+    if (!['individual', 'teams'].includes(input.mode)) throw Error('Choose a valid game mode.');
+    overrides.mode = input.mode;
+  }
+  if ((overrides.mode ?? previous?.mode) === 'teams') {
+    if ('maxPlayers' in overrides && overrides.maxPlayers !== 4) throw Error('2v2 needs exactly four player slots.');
+    overrides.maxPlayers = 4;
+  }
   if ('map' in input) overrides.map = boardMap({ map: input.map ?? '' }).id;
   const base = previous ?? { ...DEFAULT_SETTINGS, ...lobbyPreset(overrides.maxPlayers ?? DEFAULT_PLAYER_COUNT) };
   if ('maxPlayers' in overrides && overrides.maxPlayers !== base.maxPlayers && !('extendedBoard' in overrides) && !('map' in overrides) && ['classic', 'expanded'].includes(boardMap(base).id)) {
@@ -111,6 +120,11 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     emitLobby(lobby); if (lobby.status === 'finished') broadcastDirectory();
   }
   function resetReady(lobby) { lobby.players.forEach(p => { p.ready = !!p.isBot || p.id === lobby.hostId; }); }
+  function newPlayerTeam(lobby) {
+    if (lobby.settings.mode !== 'teams') return {};
+    const teamId = [...TEAM_IDS].sort((a, b) => lobby.players.filter(p => p.teamId === a).length - lobby.players.filter(p => p.teamId === b).length)[0];
+    return { teamId };
+  }
   function getLobby(playerId) { const lobby = lobbies.get(memberships.get(playerId)); if (!lobby) throw Error('Join a lobby first.'); return lobby; }
   function requireHost(lobby, playerId) { if (lobby.hostId !== playerId) throw Error('Only the lobby host can do that.'); }
   function waiting(lobby) { if (lobby.status !== 'waiting') throw Error('This match has already started.'); }
@@ -159,6 +173,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       const playerName = cleanText(payload.playerName, 24); if (!playerName) throw Error('Enter your display name.');
       let id; do { id = randomBytes(5).toString('hex').slice(0, 8).toUpperCase(); } while (lobbies.has(id));
       const lobby = { id, name: cleanText(payload.name, 48, `${playerName}’s lobby`), isPrivate: Boolean(payload.isPrivate), hostId: playerId, players: [{ id: playerId, name: playerName, color: COLORS[0], connected: true, ready: true }], settings: validateSettings(payload.settings), status: 'waiting', game: null, messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+      if (lobby.settings.mode === 'teams') lobby.players[0].teamId = TEAM_IDS[0];
       lobbies.set(id, lobby); memberships.set(playerId, id); emitLobby(lobby); broadcastDirectory(); return { id };
     });
     on('joinLobby', payload => {
@@ -168,7 +183,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       waiting(lobby); if (lobby.players.length >= lobby.settings.maxPlayers) throw Error('This lobby is full.');
       const name = cleanText(payload.playerName, 24); if (!name) throw Error('Enter your name first.');
       if (lobby.players.some(p => p.name.toLowerCase() === name.toLowerCase())) throw Error('That name is already in this lobby. Choose another.');
-      lobby.players.push({ id: playerId, name, color: COLORS.find(c => !lobby.players.some(p => p.color === c)), connected: true, ready: false });
+      lobby.players.push({ id: playerId, name, color: COLORS.find(c => !lobby.players.some(p => p.color === c)), connected: true, ready: false, ...newPlayerTeam(lobby) });
       memberships.set(playerId, id); emitLobby(lobby); broadcastDirectory(); return { id };
     });
     on('leaveLobby', () => releasePlayer(getLobby(playerId), playerId));
@@ -178,7 +193,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       const difficulty = payload.difficulty ?? 'normal';
       if (!difficulties.includes(difficulty)) throw Error('Choose Easy, Normal or Hard.');
       let number = 1; while (lobby.players.some(p => p.name.toLowerCase() === `bot ${number}`)) number++;
-      lobby.players.push({ id: `bot-${randomBytes(12).toString('hex')}`, name: `Bot ${number}`, color: COLORS.find(c => !lobby.players.some(p => p.color === c)), isBot: true, difficulty, connected: false, ready: true });
+      lobby.players.push({ id: `bot-${randomBytes(12).toString('hex')}`, name: `Bot ${number}`, color: COLORS.find(c => !lobby.players.some(p => p.color === c)), isBot: true, difficulty, connected: false, ready: true, ...newPlayerTeam(lobby) });
       resetReady(lobby); emitLobby(lobby); broadcastDirectory();
     });
     on('configureBot', payload => {
@@ -192,18 +207,32 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       const lobby = getLobby(playerId); requireHost(lobby, playerId); waiting(lobby);
       const settings = validateSettings(payload.settings || {}, lobby.settings);
       if (settings.maxPlayers < lobby.players.length) throw Error('Player limit cannot be smaller than the current lobby.');
+      if (settings.mode !== lobby.settings.mode) lobby.players.forEach((p, i) => {
+        if (settings.mode === 'teams') p.teamId = TEAM_IDS[i % 2];
+        else delete p.teamId;
+      });
       lobby.settings = settings;
       if ('name' in payload) lobby.name = cleanText(payload.name, 48, lobby.name);
       if ('isPrivate' in payload) lobby.isPrivate = Boolean(payload.isPrivate);
       resetReady(lobby); emitLobby(lobby); broadcastDirectory();
+    });
+    on('setPlayerTeam', payload => {
+      const lobby = getLobby(playerId); requireHost(lobby, playerId); waiting(lobby);
+      if (lobby.settings.mode !== 'teams') throw Error('Choose 2v2 before assigning teams.');
+      if (!TEAM_IDS.includes(payload.teamId)) throw Error('Choose Team A or Team B.');
+      const player = lobby.players.find(p => p.id === payload.playerId);
+      if (!player) throw Error('Player not found.');
+      if (player.teamId === payload.teamId) return;
+      player.teamId = payload.teamId; resetReady(lobby); emitLobby(lobby);
     });
     on('setReady', payload => { const lobby = getLobby(playerId); waiting(lobby); lobby.players.find(p => p.id === playerId).ready = Boolean(payload.ready); emitLobby(lobby); });
     on('startGame', () => {
       const lobby = getLobby(playerId); requireHost(lobby, playerId); waiting(lobby);
       if (lobby.players.length < 2) throw Error('At least two players are needed.');
       if (lobby.players.some(p => !p.isBot && (!p.connected || (p.id !== playerId && !p.ready)))) throw Error('Every player must be connected and ready.');
-      const first = randomInt(lobby.players.length);
-      const seating = [...lobby.players.slice(first), ...lobby.players.slice(0, first)];
+      const ordered = lobby.settings.mode === 'teams' ? teamSeating(lobby.players) : lobby.players;
+      const first = randomInt(ordered.length);
+      const seating = [...ordered.slice(first), ...ordered.slice(0, first)];
       lobby.game = createGame(seating, lobby.settings); lobby.recording = beginRecording(lobby.game);
       delete lobby.replay;
       lobby.matchId = randomBytes(12).toString('hex'); lobby.botRevision = 0; lobby.status = 'playing'; emitLobby(lobby); broadcastDirectory();

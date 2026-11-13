@@ -645,6 +645,10 @@
 }
 .board-options { gap: 9px; }
 .map-description { margin: -4px 0 14px; color: var(--front-muted); font-size: 12px; line-height: 1.5; }
+.game-mode-field { margin-bottom: 12px; }
+.team-rules { margin: 0 0 14px; color: var(--front-muted); font-size: 12px; line-height: 1.5; }
+.roster-team { display: block; max-width: 100%; margin-top: 5px; padding: 3px 6px; border: 1px solid #7c6c4c; border-radius: 3px; background: #1b2c25; color: #f0dfbf; font: inherit; font-size: 12px; }
+.roster-team-label { display: block; margin-top: 4px; }
 .board-picker { margin-bottom: 3px; }
 .board-picker + .front-toggle { margin-bottom: 12px; }
 .board-choice {

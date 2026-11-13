@@ -1,3 +1,5 @@
+import { gameTeams } from '../shared/teams.js';
+
 const VERSION = 1;
 const OFFER_ACTIONS = new Set(['offerTrade', 'declineTrade', 'cancelTrade']);
 const BUILD_ACTIONS = new Set(['placeSettlement', 'placeRoad', 'upgradeCity']);
@@ -80,6 +82,7 @@ export function matchSummary(game, recording) {
   const diceCounts = frames.length ? Array(11).fill(0) : null;
   const names = new Map(game.players.map(p => [p.id, p.name]));
   const timeline = [], moments = [];
+  const teams = gameTeams(game);
   let pairedTurns = 0, previous, lastLeaders, firstCity = false;
   function moment(step, frame, kind, text, playerId) {
     moments.push({ step, turn: frame.turn, kind, text, playerId });
@@ -88,11 +91,12 @@ export function matchSummary(game, recording) {
     // Other moves (including paired turns) can carry the last roll's dice.
     if (frame.move.type === 'rollDice' && frame.dice) diceCounts[frame.dice[0] + frame.dice[1] - 2]++;
     const totals = frame.points.map(p => p.total);
-    const leaders = scoreLeaders(totals);
+    const teamTotals = teams.map(team => team.players.reduce((n, p) => n + totals[game.players.findIndex(other => other.id === p.id)], 0));
+    const leaders = scoreLeaders(teams.length ? teamTotals : totals);
     const newTurn = frame.turn !== previous?.turn;
     if (newTurn && frame.paired) pairedTurns++;
     const scoresChanged = !previous || totals.some((total, i) => total !== previous.points[i].total);
-    if (newTurn || scoresChanged || step === frames.length - 1) timeline.push({ step, turn: frame.turn, totals, leaders });
+    if (newTurn || scoresChanged || step === frames.length - 1) timeline.push({ step, turn: frame.turn, totals, leaders, ...(teams.length && { teamTotals }) });
 
     if (previous) {
       if (!firstCity && frame.move.type === 'upgradeCity') {
@@ -110,14 +114,19 @@ export function matchSummary(game, recording) {
     }
     if (frame.turn > 0) {
       if (lastLeaders && String(lastLeaders) !== String(leaders) && frame.phase !== 'finished') {
-        const ids = leaders.map(index => game.players[index].id);
-        const text = ids.length === 1 ? `${names.get(ids[0])} took the lead`
-          : `${new Intl.ListFormat('en').format(ids.map(id => names.get(id)))} tied for the lead`;
-        moment(step, frame, 'lead', text, ids.length === 1 ? ids[0] : undefined);
+        const labels = leaders.map(index => teams.length ? teams[index].name : game.players[index].name);
+        const text = labels.length === 1 ? `${labels[0]} took the lead`
+          : `${new Intl.ListFormat('en').format(labels)} tied for the lead`;
+        moment(step, frame, 'lead', text, !teams.length && leaders.length === 1 ? game.players[leaders[0]].id : undefined);
       }
       lastLeaders = leaders;
     }
-    if (frame.phase === 'finished') moment(step, frame, 'win', `${names.get(game.winnerId)} won with ${totals[game.players.findIndex(p => p.id === game.winnerId)]} points`, game.winnerId);
+    if (frame.phase === 'finished') {
+      const winningTeam = teams.find(team => team.id === game.winnerTeamId);
+      const name = winningTeam?.name ?? names.get(game.winnerId);
+      const score = winningTeam ? teamTotals[teams.indexOf(winningTeam)] : totals[game.players.findIndex(p => p.id === game.winnerId)];
+      moment(step, frame, 'win', `${name} won with ${score} points`, game.winnerId);
+    }
     previous = frame;
   }
   const summary = {

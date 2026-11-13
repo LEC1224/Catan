@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto';
 import { resourceName } from '../shared/resource-names.js';
 import { boardMap, centerCellIndex } from '../shared/board-maps.js';
+import { DEFAULT_TEAM_TARGET, gameTeams, TEAM_MIN_POINTS, teamSeating } from '../shared/teams.js';
 import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable, resourceStock } from '../shared/trades.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
@@ -192,7 +193,19 @@ function updateScores(g) {
 function checkVictory(g) {
   if (g.phase.startsWith('setup') || g.phase === 'finished') return;
   const p = player(g, g.activePlayerId);
-  if (p?.score >= g.settings.victoryPoints) { g.winnerId = p.id; g.phase = 'finished'; g.deadline = null; g.tradeOffers = []; addLog(g, `${p.name} won with ${p.score} victory points!`); }
+  if (!p) return;
+  let message;
+  if (g.settings.mode === 'teams') {
+    const team = gameTeams(g).find(team => team.id === p.teamId);
+    const score = team.players.reduce((sum, p) => sum + p.score, 0);
+    if (score < g.settings.teamVictoryPoints || !team.players.every(p => p.score >= TEAM_MIN_POINTS)) return;
+    g.winnerTeamId = team.id;
+    message = `${team.name} (${team.players.map(p => p.name).join(' and ')}) won with ${score} victory points!`;
+  } else {
+    if (p.score < g.settings.victoryPoints) return;
+    message = `${p.name} won with ${p.score} victory points!`;
+  }
+  g.winnerId = p.id; g.phase = 'finished'; g.deadline = null; g.tradeOffers = []; addLog(g, message);
 }
 function settlementTargets(g, id, setup = false) {
   const p = player(g, id);
@@ -248,21 +261,28 @@ function makeDevelopmentDeck(expandedSupply) {
 export function createGame(players, settings = {}) {
   requireThat(players.length >= 2 && players.length <= 6, 'A game needs two to six players.');
   requireThat(new Set(players.map(p => p.id)).size === players.length, 'Player IDs must be unique.');
+  requireThat(settings.mode === undefined || ['individual', 'teams'].includes(settings.mode), 'Choose a valid game mode.');
+  if (settings.mode === 'teams') {
+    players = teamSeating(players);
+    const target = settings.teamVictoryPoints ?? DEFAULT_TEAM_TARGET;
+    requireThat(Number.isInteger(target) && target >= 12 && target <= 30, 'Team points to win must be between 12 and 30.');
+  }
   const map = boardMap(settings);
-  const merged = { ...DEFAULTS, ...settings, map: map.id, extendedBoard: map.cells.length > 19 }, board = buildBoard(merged);
+  const merged = { ...DEFAULTS, ...settings, mode: settings.mode ?? 'individual', teamVictoryPoints: settings.teamVictoryPoints ?? DEFAULT_TEAM_TARGET, ...(settings.mode === 'teams' && { maxPlayers: 4 }), map: map.id, extendedBoard: map.cells.length > 19 }, board = buildBoard(merged);
   const expandedSupply = usesExpandedSupply(players, merged);
   const stock = merged.unlimitedResourceCards ? null : expandedSupply ? 24 : 19;
   const g = {
-    settings: merged, board, players: players.map(p => ({ id: p.id, name: p.name, color: p.color, resources: emptyResources(), development: [], resourceCount: 0, developmentCount: 0, knights: 0, roadsLeft: 15, settlementsLeft: 5, citiesLeft: 4, score: 0, visibleScore: 0, longestRoad: 0 })),
+    settings: merged, board, players: players.map(p => ({ id: p.id, name: p.name, color: p.color, ...(merged.mode === 'teams' && { teamId: p.teamId }), resources: emptyResources(), development: [], resourceCount: 0, developmentCount: 0, knights: 0, roadsLeft: 15, settlementsLeft: 5, citiesLeft: 4, score: 0, visibleScore: 0, longestRoad: 0 })),
     bank: Object.fromEntries(RESOURCES.map(r => [r, stock])),
     developmentDeck: makeDevelopmentDeck(expandedSupply), playedDevelopment: [],
-    phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, dice: null,
+    phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, winnerTeamId: null, dice: null,
     robberHexId: (merged.lockDesertToCenter ? board.hexes[centerCellIndex(board.hexes)] : board.hexes.find(h => h.terrain === 'desert')).id,
     longestRoadHolder: null, largestArmyHolder: null,
     log: [], pairedPlayer: false, primaryIndex: 0, setupOrder: [...players.map(p => p.id), ...players.map(p => p.id).reverse()], setupIndex: 0, setupVertexId: null,
     discardRequired: {}, stealTargets: [], tradeOffers: [], roadBuildingRemaining: 0, developmentPlayed: false,
   };
   setDeadline(g); addLog(g, 'Place your first settlement and road.');
+  if (merged.mode === 'teams') addLog(g, `2v2: first team to ${merged.teamVictoryPoints} points wins, with at least ${TEAM_MIN_POINTS} points per teammate.`);
   if (players.length === 2) addLog(g, 'Two-player casual variant: standard core rules without neutral players.');
   return g;
 }

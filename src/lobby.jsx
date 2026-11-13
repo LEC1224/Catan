@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from "../shared/lobby-presets.js";
 import { BOARD_MAPS, boardMap } from "../shared/board-maps.js";
+import { DEFAULT_TEAM_TARGET, TEAM_IDS, TEAM_MIN_POINTS, teamName } from "../shared/teams.js";
 import { Chat } from "./chat.jsx";
 import "./lobby.css";
 
@@ -177,7 +178,7 @@ function LobbyDirectory({ directory, onJoin, connected, busy }) {
               <tr key={room.id}>
                 <th scope="row" className="directory-room">
                   <strong>{room.name}</strong>
-                  <small>{room.hostName}<span className="directory-mobile-board"> · {boardMap(room.settings).name}</span></small>
+                  <small>{room.hostName}{room.settings?.mode === "teams" && " · 2v2"}<span className="directory-mobile-board"> · {boardMap(room.settings).name}</span></small>
                 </th>
                 <td>
                   <span className="directory-seats">
@@ -326,6 +327,7 @@ function SettingsSelect({ label, value, options, format = String, disabled, onCh
 
 function SettingsPanel({ lobby, host, busy, command }) {
   const settings = lobby.settings;
+  const teams = settings.mode === "teams";
   const disabled = !host || !!busy;
   const change = (key, value) => command("configureLobby", {
     settings: { [key]: value },
@@ -361,12 +363,21 @@ function SettingsPanel({ lobby, host, busy, command }) {
             <Toggle label="Private lobby" checked={lobby.isPrivate} disabled={!!busy} onChange={(isPrivate) => command("configureLobby", { isPrivate })} />
           </div>
         )}
+        <label className="front-field game-mode-field">
+          Game mode
+          <select value={settings.mode ?? "individual"} disabled={disabled} onChange={event => change("mode", event.target.value)}>
+            <option value="individual">Individual</option>
+            <option value="teams" disabled={lobby.players.length > 4}>2v2{lobby.players.length > 4 ? " · 4 players required" : ""}</option>
+          </select>
+        </label>
+        {teams && <p className="team-rules">First team to {settings.teamVictoryPoints ?? DEFAULT_TEAM_TARGET} points wins, with at least {TEAM_MIN_POINTS} per player. Teams alternate turns and players keep separate hands.</p>}
         <BoardPicker selected={boardMap(settings).id} onChange={(value) => change("map", value)} disabled={disabled} />
         <p className="map-description">{boardMap(settings).description}</p>
         <Toggle checked={settings.lockDesertToCenter} onChange={(value) => change("lockDesertToCenter", value)} label="Lock desert to center" disabled={disabled} />
         <div className="lobby-settings-grid">
-          <SettingsSelect label="Player limit" value={settings.maxPlayers} options={PLAYER_COUNTS.filter((count) => count >= lobby.players.length)} disabled={disabled} onChange={(value) => change("maxPlayers", value)} />
-          <SettingsSelect label="Points to win" value={settings.victoryPoints} options={Array.from({ length: 18 }, (_, i) => i + 3)} disabled={disabled} onChange={(value) => change("victoryPoints", value)} />
+          <SettingsSelect label="Player limit" value={settings.maxPlayers} options={teams ? [4] : PLAYER_COUNTS.filter((count) => count >= lobby.players.length)} disabled={disabled || teams} onChange={(value) => change("maxPlayers", value)} />
+          {teams ? <SettingsSelect label="Team points to win" value={settings.teamVictoryPoints ?? DEFAULT_TEAM_TARGET} options={Array.from({ length: 19 }, (_, i) => i + 12)} disabled={disabled} onChange={(value) => change("teamVictoryPoints", value)} />
+            : <SettingsSelect label="Points to win" value={settings.victoryPoints} options={Array.from({ length: 18 }, (_, i) => i + 3)} disabled={disabled} onChange={(value) => change("victoryPoints", value)} />}
           <SettingsSelect label="Turn timer" value={settings.turnSeconds} options={TIMER_OPTIONS}
             format={(seconds) => seconds === 0 ? "Off" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`}
             disabled={disabled} onChange={(value) => change("turnSeconds", value)} />
@@ -400,7 +411,7 @@ function SettingsPanel({ lobby, host, busy, command }) {
   );
 }
 
-function RosterSlot({ player, index, meId, hostId, host, busy, command }) {
+function RosterSlot({ player, index, meId, hostId, host, busy, command, teams }) {
   const isHost = player?.id === hostId;
   const isMe = player?.id === meId;
   const difficulty = player?.isBot ? DIFFICULTIES[player.difficulty] : "";
@@ -412,7 +423,12 @@ function RosterSlot({ player, index, meId, hostId, host, busy, command }) {
       </span>
       {player ? (
         <>
-          <span className="roster-name"><strong>{player.name}</strong>{isMe && <small> (you)</small>}</span>
+          <span className="roster-name"><strong>{player.name}</strong>{isMe && <small> (you)</small>}
+            {teams && (host ? <select className="roster-team" aria-label={`Team for ${player.name}`} value={player.teamId} disabled={!!busy}
+              onChange={event => command("setPlayerTeam", { playerId: player.id, teamId: event.target.value })}>
+              {TEAM_IDS.map(id => <option key={id} value={id}>{teamName(id)}</option>)}
+            </select> : <small className="roster-team-label">{teamName(player.teamId)}</small>)}
+          </span>
           <span className={`roster-state ${isHost ? "is-host" : !player.isBot && player.ready && player.connected ? "is-ready" : ""}`}>
             {isHost ? <><Crown size={14} aria-hidden="true" /> {player.connected ? "Host" : "Host offline"}</>
               : player.isBot ? (host ? "Bot" : `Bot · ${difficulty}`)
@@ -446,7 +462,9 @@ export function WaitingRoom({ lobby, meId, botSupport, command, copyInvite, busy
   const hasBotSlot = host && lobby.players.length < lobby.settings.maxPlayers;
   const me = lobby.players.find((player) => player.id === meId);
   const allReady = lobby.players.filter((player) => player.id !== lobby.hostId).every((player) => player.isBot || (player.ready && player.connected));
-  const blocked = lobby.players.length < 2 ? "At least 2 players are required." : !allReady ? "Waiting for players to be ready." : "";
+  const teams = lobby.settings.mode === "teams";
+  const blocked = teams && lobby.players.length !== 4 ? "2v2 needs exactly 4 players." : teams && TEAM_IDS.some(id => lobby.players.filter(p => p.teamId === id).length !== 2) ? "Each team needs 2 players."
+    : lobby.players.length < 2 ? "At least 2 players are required." : !allReady ? "Waiting for players to be ready." : "";
   return (
     <main className="front-page waiting-screen">
       <LobbyBanner lobby={lobby} onInvite={copyInvite} />
@@ -461,7 +479,7 @@ export function WaitingRoom({ lobby, meId, botSupport, command, copyInvite, busy
           </PanelHeading>
           <ol className="roster-list" aria-label="Player slots">
             {Array.from({ length: lobby.settings.maxPlayers }, (_, index) => (
-              <RosterSlot key={lobby.players[index]?.id || index} player={lobby.players[index]} index={index} meId={meId} hostId={lobby.hostId} host={host} busy={busy} command={command} />
+              <RosterSlot key={lobby.players[index]?.id || index} player={lobby.players[index]} index={index} meId={meId} hostId={lobby.hostId} host={host} busy={busy} command={command} teams={teams} />
             ))}
           </ol>
           {hasBotSlot && botSupport === false && <p className="roster-note" role="status">The game server needs an update to add bots.</p>}

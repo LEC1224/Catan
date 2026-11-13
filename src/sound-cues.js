@@ -1,4 +1,5 @@
 import { openTradeOffers } from "../shared/trades.js";
+import { areTeammates } from "../shared/teams.js";
 
 const AWARDS = new Set(["longestRoute", "largestArmy"]);
 
@@ -26,7 +27,7 @@ function gameSoundCues(previous, game, meId) {
   const moves = game.log.filter(({ seq, cue }) => seq > cursor && cue).map(({ cue }) => cue);
   if (game.winnerId && game.winnerId !== previous.winnerId) {
     // A winning move can also claim an award. Give it a beat before the result.
-    return [...new Set(moves.filter((cue) => AWARDS.has(cue))), game.winnerId === meId ? "won" : "finished"];
+    return [...new Set(moves.filter((cue) => AWARDS.has(cue))), game.winnerId === meId || areTeammates(game, game.winnerId, meId) ? "won" : "finished"];
   }
 
   const mustDiscard = game.discardRequired?.[meId] > 0;
