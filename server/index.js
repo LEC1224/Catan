@@ -11,7 +11,7 @@ import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
-export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, unlimitedDevelopmentCards: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 function cleanText(value, max, fallback = '') { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) || fallback : fallback; }
 export function validateSettings(input = {}, previous) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid game settings.');
@@ -22,7 +22,7 @@ export function validateSettings(input = {}, previous) {
     if (!Number.isInteger(value) || value < min || value > max || (key === 'turnSeconds' && value > 0 && value < 30)) throw Error(`Invalid ${key} setting.`);
     overrides[key] = value;
   }
-  for (const key of ['extendedBoard', 'lockDesertToCenter', 'friendlyRobber', 'balancedNumbers', 'allowPlayerTrading', 'pairedTurns']) if (key in input) {
+  for (const key of ['extendedBoard', 'lockDesertToCenter', 'friendlyRobber', 'balancedNumbers', 'unlimitedDevelopmentCards', 'allowPlayerTrading', 'pairedTurns']) if (key in input) {
     if (typeof input[key] !== 'boolean') throw Error(`Invalid ${key} setting.`);
     overrides[key] = input[key];
   }
@@ -55,6 +55,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       const data = JSON.parse(await readFile(dataFile, 'utf8'));
       for (const lobby of data.lobbies || []) {
         if (Date.now() - lobby.updatedAt > 7 * 86400000) continue;
+        lobby.settings.unlimitedDevelopmentCards ??= DEFAULT_SETTINGS.unlimitedDevelopmentCards;
         for (const player of lobby.players) { player.connected = false; player.disconnectedAt = Date.now(); if (!player.isBot) memberships.set(player.id, lobby.id); }
         if (lobby.status === 'playing' && lobby.game && !hasRecording(lobby.recording)) lobby.recording = beginRecording(lobby.game, true);
         lobbies.set(lobby.id, lobby);

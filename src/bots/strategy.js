@@ -99,7 +99,7 @@ function goals(g, id, c, difficulty) {
   if (c.p.settlementsLeft || difficulty === 'hard') for (const road of roadChoices(g, id, c, difficulty)) {
     if (road.score > 0) options.push({ ...road, score: 9 + road.score * 0.4 });
   }
-  if (g.developmentRemaining > 0) options.push({ action: { type: 'buyDevelopment' }, score: 17 + (c.p.knights >= 2 ? 5 : 0) });
+  if (g.developmentRemaining !== 0) options.push({ action: { type: 'buyDevelopment' }, score: 17 + (c.p.knights >= 2 ? 5 : 0) });
   // Prioritize the point that ends the game.
   if (c.p.score >= g.settings.victoryPoints - 1) for (const o of options) if (['placeSettlement', 'upgradeCity'].includes(o.action.type)) o.score += 100;
   return options;

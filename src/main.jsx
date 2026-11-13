@@ -635,9 +635,9 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
                   <strong>{game.bank[r]}</strong>
                 </span>
               ))}
-              <span role="img" data-deal-bank="development" title="Development cards remaining" aria-label={`${game.developmentRemaining} development cards remaining`}>
+              <span role="img" data-deal-bank="development" title="Development cards remaining" aria-label={`${game.developmentRemaining ?? "Unlimited"} development cards remaining`}>
                 <ScrollText size={16} aria-hidden="true" />
-                <strong>{game.developmentRemaining}</strong>
+                <strong>{game.developmentRemaining ?? "∞"}</strong>
               </span>
             </div>
           </div>
@@ -721,7 +721,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
               className="build-action"
               aria-description={costDescription("development")}
               {...shortcutProps("development")}
-              disabled={!canAct || !!busy || !afford("development") || !game.developmentRemaining}
+              disabled={!canAct || !!busy || !afford("development") || game.developmentRemaining === 0}
               onClick={() => action("buyDevelopment")}
             >
               <ScrollText size={19} aria-hidden="true" />

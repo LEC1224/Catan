@@ -332,6 +332,33 @@ test('development purchase hides cards and enforces purchase-turn and one-card l
   conservation(g);
 });
 
+test('an empty deck refills only in unlimited mode and still charges the buyer', () => {
+  for (const expanded of [false, true]) {
+    const g = ready(expanded ? 5 : 3, { extendedBoard: false, unlimitedDevelopmentCards: true });
+    g.developmentDeck = [{ id: 'last-card', type: 'knight' }];
+    for (const r of ['ore', 'wool', 'wheat']) give(g, 'p0', r, 2);
+    action(g, 'p0', 'buyDevelopment');
+    assert.equal(g.developmentDeck.length, 0);
+    assert.equal(JSON.parse(JSON.stringify(viewGame(g, 'p1'))).developmentRemaining, null);
+
+    const finite = structuredClone(g);
+    finite.settings.unlimitedDevelopmentCards = false;
+    assert.equal(viewGame(finite, 'p0').developmentRemaining, 0);
+    assert.throws(() => action(finite, 'p0', 'buyDevelopment'), /deck is empty/);
+    delete finite.settings.unlimitedDevelopmentCards;
+    assert.throws(() => action(finite, 'p0', 'buyDevelopment'), /deck is empty/);
+
+    action(g, 'p0', 'buyDevelopment');
+    const cards = [...g.developmentDeck, ...g.players[0].development.filter(c => c.id !== 'last-card')];
+    assert.equal(cards.length, expanded ? 34 : 25);
+    assert.equal(cards.filter(c => c.type === 'knight').length, expanded ? 20 : 14);
+    assert.equal(new Set(cards.map(c => c.id)).size, cards.length);
+    for (const r of ['ore', 'wool', 'wheat']) assert.equal(g.players[0].resources[r], 0);
+    assert.throws(() => action(g, 'p0', 'buyDevelopment'), /enough resources/);
+    conservation(g);
+  }
+});
+
 test('invention failure does not partially grant resources; monopoly takes all matching cards', () => {
   const g = ready(), id = card(g, 'p0', 'invention'); give(g, 'p1', 'ore', g.players[1].resources.ore + g.bank.ore);
   const before = structuredClone(g); assert.throws(() => action(g, 'p0', 'playDevelopment', { cardId: id, resources: { wood: 1, ore: 1 } }), /supply/); assert.deepEqual(g, before);

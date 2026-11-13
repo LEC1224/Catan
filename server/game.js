@@ -5,7 +5,7 @@ import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from
 
 export const RESOURCES = ['wood', 'brick', 'wool', 'wheat', 'ore'];
 const COSTS = { road: { wood: 1, brick: 1 }, settlement: { wood: 1, brick: 1, wool: 1, wheat: 1 }, city: { wheat: 2, ore: 3 }, development: { wool: 1, wheat: 1, ore: 1 } };
-const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const fail = text => { throw new Error(text); };
@@ -229,16 +229,22 @@ function activateRobber(g, returnPhase = 'action') {
   else phase(g, 'robber');
 }
 
+const usesExpandedSupply = (players, settings) => players.length >= 5 || settings.extendedBoard;
+
+function makeDevelopmentDeck(expandedSupply) {
+  const deckTypes = [['knight', expandedSupply ? 20 : 14], ['victoryPoint', 5], ['roadBuilding', expandedSupply ? 3 : 2], ['invention', expandedSupply ? 3 : 2], ['monopoly', expandedSupply ? 3 : 2]];
+  return shuffle(deckTypes.flatMap(([type, n]) => Array.from({ length: n }, () => ({ id: randomUUID(), type }))));
+}
+
 export function createGame(players, settings = {}) {
   requireThat(players.length >= 2 && players.length <= 6, 'A game needs two to six players.');
   requireThat(new Set(players.map(p => p.id)).size === players.length, 'Player IDs must be unique.');
   const merged = { ...DEFAULTS, ...settings }, board = buildBoard(merged);
-  const expandedSupply = players.length >= 5 || merged.extendedBoard;
-  const deckTypes = [['knight', expandedSupply ? 20 : 14], ['victoryPoint', 5], ['roadBuilding', expandedSupply ? 3 : 2], ['invention', expandedSupply ? 3 : 2], ['monopoly', expandedSupply ? 3 : 2]];
+  const expandedSupply = usesExpandedSupply(players, merged);
   const g = {
     settings: merged, board, players: players.map(p => ({ id: p.id, name: p.name, color: p.color, resources: emptyResources(), development: [], resourceCount: 0, developmentCount: 0, knights: 0, roadsLeft: 15, settlementsLeft: 5, citiesLeft: 4, score: 0, visibleScore: 0, longestRoad: 0 })),
     bank: Object.fromEntries(RESOURCES.map(r => [r, expandedSupply ? 24 : 19])),
-    developmentDeck: shuffle(deckTypes.flatMap(([type, n]) => Array.from({ length: n }, () => ({ id: randomUUID(), type })))), playedDevelopment: [],
+    developmentDeck: makeDevelopmentDeck(expandedSupply), playedDevelopment: [],
     phase: 'setupSettlement', activePlayerId: players[0].id, turn: 0, deadline: null, winnerId: null, dice: null,
     robberHexId: (merged.lockDesertToCenter ? board.hexes[centerHexIndex(board.hexes.length)] : board.hexes.find(h => h.terrain === 'desert')).id,
     longestRoadHolder: null, largestArmyHolder: null,
@@ -397,8 +403,9 @@ function applyAction(g, id, type, payload, moves) {
     }
     case 'buyDevelopment': {
       requireThat(g.phase === 'action', 'Buy development cards during your action phase.');
-      requireThat(g.developmentDeck.length > 0, 'The development deck is empty.');
+      requireThat(g.developmentDeck.length > 0 || g.settings.unlimitedDevelopmentCards, 'The development deck is empty.');
       pay(g, p, COSTS.development, moves);
+      if (!g.developmentDeck.length) g.developmentDeck = makeDevelopmentDeck(usesExpandedSupply(g.players, g.settings));
       const card = { ...g.developmentDeck.pop(), turnBought: g.turn };
       p.development.push(card);
       moves.push({ from: bank, to: playerHand(id), kind: 'development', type: card.type, cardId: card.id, count: 1 });
@@ -458,7 +465,7 @@ export function viewGame(g, playerId) {
     return declinedBy.includes(playerId) ? [] : [offer];
   });
   visible.tradeOffer = visible.tradeOffers.length === 1 ? visible.tradeOffers[0] : null;
-  visible.developmentRemaining = developmentDeck.length;
+  visible.developmentRemaining = g.settings.unlimitedDevelopmentCards ? null : developmentDeck.length;
   visible.players = visible.players.map(p => p.id === playerId || g.phase === 'finished' ? p : { ...p, resources: null, development: null, score: p.visibleScore });
   visible.legal = legal(g, playerId);
   return visible;
