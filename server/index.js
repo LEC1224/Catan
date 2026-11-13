@@ -5,7 +5,7 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGame, action, viewGame, tick } from './game.js';
+import { createGame, nextGame, viewGame, needsTick, tick } from './game.js';
 import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary, viewReplay } from './match-recording.js';
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
 import { boardMap } from '../shared/board-maps.js';
@@ -102,18 +102,23 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     const { recording, replay, ...visibleLobby } = lobby;
     const summary = lobby.status === 'finished' ? matchSummary(lobby.game, recording) : null;
     const replayView = summary ? viewReplay(recording, replay) : null;
-    for (const player of lobby.players) for (const socketId of sessions.get(player.id) || []) {
-      io.to(socketId).emit('lobby', { ...visibleLobby, summary, replay: replayView, botsPaused: bots.length > 0 && !controllerId, meId: player.id, game: lobby.game ? viewGame(lobby.game, player.id) : null });
-      io.to(socketId).emit('botState', socketId === controllerId && bots.length && lobby.status === 'playing' ? {
-        lobbyId: lobby.id, matchId: lobby.matchId, lease: controller.lease, revision: lobby.botRevision || 0,
-        bots: bots.map(bot => ({ id: bot.id, difficulty: bot.difficulty, game: viewGame(lobby.game, bot.id) })),
-      } : null);
+    for (const player of lobby.players) {
+      const sockets = sessions.get(player.id);
+      if (!sockets?.size) continue;
+      // Tabs share an identity and therefore the same masked view, never another player's.
+      const snapshot = { ...visibleLobby, summary, replay: replayView, botsPaused: bots.length > 0 && !controllerId, meId: player.id, game: lobby.game ? viewGame(lobby.game, player.id) : null };
+      for (const socketId of sockets) {
+        io.to(socketId).emit('lobby', snapshot);
+        io.to(socketId).emit('botState', socketId === controllerId && bots.length && lobby.status === 'playing' ? {
+          lobbyId: lobby.id, matchId: lobby.matchId, lease: controller.lease, revision: lobby.botRevision || 0,
+          bots: bots.map(bot => ({ id: bot.id, difficulty: bot.difficulty, game: viewGame(lobby.game, bot.id) })),
+        } : null);
+      }
     }
   }
   function commitAction(lobby, playerId, payload) {
-    const candidate = structuredClone(lobby.game);
-    const previousLog = lastLogSequence(candidate);
-    action(candidate, playerId, payload.type, payload);
+    const previousLog = lastLogSequence(lobby.game);
+    const candidate = nextGame(lobby.game, playerId, payload.type, payload);
     appendFrame(lobby.recording, captureMove(candidate, playerId, payload.type, previousLog));
     lobby.game = candidate; lobby.botRevision = (lobby.botRevision || 0) + 1;
     if (candidate.phase === 'finished') lobby.status = 'finished';
@@ -300,27 +305,31 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
     else { const { createServer } = await import('vite'); vite = await createServer({ root, server: { middlewareMode: true, hmr: { server: httpServer } }, appType: 'spa' }); app.use(vite.middlewares); }
   }
   const timer = setInterval(() => {
+    const now = Date.now();
     for (const lobby of lobbies.values()) {
       if (lobby.game && lobby.status === 'playing' && lobby.players.some(p => p.connected)) {
         try {
-          const candidate = structuredClone(lobby.game), frames = [];
           const excluded = lobby.players.filter(p => p.isBot).map(p => p.id);
-          if (tick(candidate, Date.now(), excluded, (playerId, type, previousLog) => {
-            frames.push(captureMove(candidate, playerId, type, previousLog, true));
-          })) {
-            for (const frame of frames) appendFrame(lobby.recording, frame);
-            lobby.game = candidate; lobby.botRevision = (lobby.botRevision || 0) + 1;
-            if (candidate.phase === 'finished') { lobby.status = 'finished'; broadcastDirectory(); }
-            emitLobby(lobby);
+          // Most polls are idle. Check eligibility before allocating a transaction copy.
+          if (needsTick(lobby.game, now, excluded)) {
+            const candidate = structuredClone(lobby.game), frames = [];
+            if (tick(candidate, now, excluded, (playerId, type, previousLog) => {
+              frames.push(captureMove(candidate, playerId, type, previousLog, true));
+            })) {
+              for (const frame of frames) appendFrame(lobby.recording, frame);
+              lobby.game = candidate; lobby.botRevision = (lobby.botRevision || 0) + 1;
+              if (candidate.phase === 'finished') { lobby.status = 'finished'; broadcastDirectory(); }
+              emitLobby(lobby);
+            }
           }
         }
         catch (error) { console.error('Timer resolution failed:', error.message); }
       }
       const currentHost = lobby.players.find(p => p.id === lobby.hostId);
-      if (currentHost && !currentHost.connected && Date.now() - currentHost.disconnectedAt > 60000) {
+      if (currentHost && !currentHost.connected && now - currentHost.disconnectedAt > 60000) {
         const next = lobby.players.find(p => !p.isBot && p.connected); if (next) { lobby.hostId = next.id; next.ready = true; emitLobby(lobby); broadcastDirectory(); }
       }
-      if (Date.now() - lobby.updatedAt > 24 * 3600000 && !lobby.players.some(p => p.connected)) { for (const p of lobby.players) memberships.delete(p.id); lobbies.delete(lobby.id); botControllers.delete(lobby.id); dirty = true; }
+      if (now - lobby.updatedAt > 24 * 3600000 && !lobby.players.some(p => p.connected)) { for (const p of lobby.players) memberships.delete(p.id); lobbies.delete(lobby.id); botControllers.delete(lobby.id); dirty = true; }
     }
     save();
   }, testMode ? 50 : 1000);
