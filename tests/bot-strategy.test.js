@@ -103,3 +103,28 @@ test('road planning prefers reaching a new site over connecting an already reach
   ], ['c-start', 'a-frontier'], { start: { owner: 'bot', type: 'settlement' } });
   assert.deepEqual(chooseBotAction(game, 'bot', 'hard', {}, () => 0.5), { type: 'placeRoad', edgeId: 'a-frontier' });
 });
+
+test('normal and hard bots preserve a buildable settlement when a discard cannot preserve a city', () => {
+  for (const difficulty of ['normal', 'hard']) {
+    const { game, vertex } = cityOpportunity({ wood: 2, brick: 2, wool: 2, wheat: 2 }, { hardHandLimit: 8 });
+    const middle = game.board.vertices.find(v => vertex.neighborIds.includes(v.id));
+    const target = game.board.vertices.find(v => middle.neighborIds.includes(v.id) && v.id !== vertex.id && !vertex.neighborIds.includes(v.id));
+    for (const [a, b] of [[vertex.id, middle.id], [middle.id, target.id]]) {
+      game.board.edges.find(e => e.a === a && e.b === b || e.a === b && e.b === a).owner = 'bot';
+    }
+    game.phase = 'discard'; game.discardRequired = { bot: 4 };
+    const discard = decide(game, {}, difficulty);
+    assert.deepEqual(discard.resources, { wood: 1, brick: 1, wool: 1, wheat: 1, ore: 0 });
+    apply(game, discard);
+    game.phase = 'action';
+    const build = decide(game, {}, difficulty);
+    assert.equal(build.type, 'placeSettlement');
+    apply(game, build);
+  }
+});
+
+test('bots preserve a complete city when enough cards survive the discard', () => {
+  const { game } = cityOpportunity({ wood: 4, wheat: 2, ore: 4 });
+  game.phase = 'discard'; game.discardRequired = { bot: 5 };
+  assert.deepEqual(decide(game).resources, { wood: 4, brick: 0, wool: 0, wheat: 0, ore: 1 });
+});

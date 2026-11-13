@@ -163,6 +163,26 @@ function playCard(g, id, c, cost, difficulty) {
   return null;
 }
 
+function discardCost(g, id, c, amount) {
+  const settlements = [...c.vertices.values()].filter(v => v.building?.owner === id && v.building.type === 'settlement');
+  const canUpgrade = c.p.citiesLeft && settlements.length;
+  let cost = canUpgrade ? COST.upgradeCity : COST.placeSettlement, best = 0;
+  const kept = sum(c.p.resources) - amount;
+  // Keep a complete, reachable scoring build when it fits in the retained hand.
+  // During discards the server's legal lists are empty, so use only public geometry.
+  if (canUpgrade && kept >= sum(COST.upgradeCity) && pays(c.p.resources, COST.upgradeCity)) {
+    best = Math.max(...settlements.map(v => 30 + c.yieldAt(v) * 1.5));
+  }
+  if (c.p.settlementsLeft && kept >= sum(COST.placeSettlement) && pays(c.p.resources, COST.placeSettlement)) {
+    for (const vertex of c.vertices.values()) {
+      if (vertex.building || vertex.neighborIds.some(id => c.vertices.get(id).building) || !vertex.edgeIds.some(id => c.edges.get(id).owner === c.p.id)) continue;
+      const value = 32 + c.siteValue(vertex);
+      if (value > best) { best = value; cost = COST.placeSettlement; }
+    }
+  }
+  return cost;
+}
+
 export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, random = Math.random, now = Date.now()) {
   if (!g || g.phase === 'finished') return null;
   const c = context(g, id, difficulty), p = c.p;
@@ -170,9 +190,9 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
   if (memory.turn !== g.turn) { for (const key of Object.keys(memory)) delete memory[key]; memory.turn = g.turn; }
   if (g.phase === 'discard' && g.discardRequired[id]) {
     const hand = { ...p.resources }, resources = empty();
-    const cost = p.citiesLeft && g.board.vertices.some(v => v.building?.owner === id && v.building.type === 'settlement') ? COST.upgradeCity : COST.placeSettlement;
+    const cost = difficulty === 'easy' ? empty() : discardCost(g, id, c, g.discardRequired[id]);
     for (let n = 0; n < g.discardRequired[id]; n++) {
-      const r = RESOURCES.filter(r => hand[r] > 0).sort((a, b) => (hand[b] - (difficulty === 'easy' ? 0 : cost[b] || 0)) - (hand[a] - (difficulty === 'easy' ? 0 : cost[a] || 0)))[0];
+      const r = RESOURCES.filter(r => hand[r] > 0).sort((a, b) => (hand[b] - (cost[b] || 0)) - (hand[a] - (cost[a] || 0)))[0];
       resources[r]++; hand[r]--;
     }
     return { type: 'discard', resources };
