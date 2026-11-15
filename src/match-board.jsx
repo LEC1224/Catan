@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Anchor, Minus, Plus, RotateCcw } from "lucide-react";
 import { boardScenery, HOME_CAMERA, moveCamera, productionPips, terrainVariants } from "./board-layout.js";
-import { BuildingApron, RoadGravel, RoadNetwork, RoadPreview } from "./board-roads.jsx";
+import { BuildingApron, RoadGravel, RoadNetwork, RoadOpening, RoadPreview, roadCourse, roadLayout } from "./board-roads.jsx";
 import { BuildDust, SETTLEMENT_CONTACT_MS, SETTLEMENT_LANDING_MS, settlementContactDelay } from "./build-effects.jsx";
 import { BuildPreview, CityUpgradePreview } from "./build-preview.jsx";
 import { RobberHexMark } from "./robber-guide.jsx";
@@ -29,23 +29,45 @@ function roofMatrix(color) {
     " 4.4 -4.2 0 0 -.25";
 }
 
-function PieceArt({ column, size, y, outline, children }) {
+function PieceOutline({ id, withArt }) {
   return (
-    <g filter={`url(#${outline})`}>
-      <svg x={-size / 2} y={y} width={size} height={size} viewBox={`${column * 724} 0 724 724`}>
-        <image href="/assets/pieces-atlas.png" width="2172" height="724" />
-        {children}
-      </svg>
-    </g>
+    <filter id={id} x="-20%" y="-20%" width="140%" height="150%" colorInterpolationFilters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="1.55" result="rimMask" />
+      <feFlood floodColor="#f8e3b8" floodOpacity=".94" result="rimPaint" />
+      <feComposite in="rimPaint" in2="rimMask" operator="in" result="rim" />
+      {withArt && <feMerge result="outlined"><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>}
+      <feDropShadow in={withArt ? "outlined" : "rim"} dx="0" dy="1.8" stdDeviation="1.1" floodColor="#101b17" floodOpacity=".95" />
+    </filter>
   );
 }
 
-function Building({ type, filter, clip, outline, gravel, x, y }) {
+function PieceArt({ column, size, y, outline, rim, opening, children }) {
+  const spriteId = useId();
+  const art = (
+    <svg x={-size / 2} y={y} width={size} height={size} viewBox={`${column * 724} 0 724 724`}>
+      <image href="/assets/pieces-atlas.png" width="2172" height="724" />
+      {children}
+    </svg>
+  );
+  if (!opening) return <g filter={`url(#${outline})`}>{art}</g>;
+  return (
+    <>
+      <defs><g id={spriteId}>{art}</g></defs>
+      <use href={`#${spriteId}`} filter={`url(#${rim})`} mask={opening} />
+      <use href={`#${spriteId}`} />
+    </>
+  );
+}
+
+function Building({ type, filter, clip, outline, rim, gravel, approach, x, y }) {
   const city = type === "city", size = city ? 54 : 45;
+  const openingId = useId();
+  const opening = approach ? `url(#${openingId})` : undefined;
   return (
     <g pointerEvents="none" transform={`translate(${x},${y})`}>
-      <BuildingApron city={city} gravel={gravel} />
-      <PieceArt column={city ? 1 : 0} size={size} y={10 - size} outline={outline}>
+      {approach && <defs><RoadOpening id={openingId} approach={approach} x={x} y={y} /></defs>}
+      <g mask={opening}><BuildingApron city={city} gravel={gravel} /></g>
+      <PieceArt column={city ? 1 : 0} size={size} y={10 - size} outline={outline} rim={rim} opening={opening}>
         <g clipPath={`url(#${clip})`}>
           <image href="/assets/pieces-atlas.png" width="2172" height="724" filter={`url(#${filter})`} />
         </g>
@@ -179,10 +201,17 @@ function TerrainImage({ h, terrain, variant }) {
 function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resourceMeta, scenery, variants }) {
   const ids = useId();
   const outline = `${ids}-piece-outline`;
+  const rim = `${ids}-piece-rim`;
   const gravel = `${ids}-road-gravel`;
-  const { vertices, polygons, shore, ports } = scenery;
-  const { hexes, edges } = game.board;
+  const { polygons, shore, ports } = scenery;
+  const { hexes, edges, vertices: boardVertices } = game.board;
+  const vertices = useMemo(() => Object.fromEntries(boardVertices.map(v => [v.id, v])), [boardVertices]);
   const colors = Object.fromEntries(game.players.map((p, i) => [p.id, { color: p.color, filter: `${ids}-roof-${i}` }]));
+  const { routes, approaches } = roadLayout(edges, vertices);
+  const renderPiece = (kind, owner, v) => (
+    <Building type={kind} filter={colors[owner]?.filter} clip={`${ids}-shape-${kind}`} outline={outline} rim={rim}
+      gravel={gravel} approach={approaches.get(v.id)?.get(owner)?.join(" ")} x={v.x} y={v.y} />
+  );
   const isActive = game.activePlayerId === meId, legal = game.legal || {};
   const previewBuilds = !mode && !busy;
   const previewRoads = previewBuilds && canBuild.road;
@@ -191,22 +220,14 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
   const settlements = new Set(isActive && (game.phase === "setupSettlement" || mode === "settlement" || previewSettlements) ? legal.settlements : []);
   const roads = new Set(isActive && (game.phase === "setupRoad" || game.roadBuildingRemaining || mode === "road" || previewRoads) ? legal.roads : []);
   const cities = new Set(isActive && (mode === "city" || previewCities) ? legal.cities : []);
-  const [landing, finishLanding] = useSettlementLandings(game.board.vertices, meId, stream);
+  const [landing, finishLanding] = useSettlementLandings(boardVertices, meId, stream);
   const robber = robberPlacement(game, meId);
   return (
     <>
       <defs>
         <RoadGravel id={gravel} />
-        <filter id={outline} x="-20%" y="-20%" width="140%" height="150%" colorInterpolationFilters="sRGB">
-          <feMorphology in="SourceAlpha" operator="dilate" radius="1.55" result="rimMask" />
-          <feFlood floodColor="#f8e3b8" floodOpacity=".94" result="rimPaint" />
-          <feComposite in="rimPaint" in2="rimMask" operator="in" result="rim" />
-          <feMerge result="outlined">
-            <feMergeNode in="rim" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-          <feDropShadow in="outlined" dx="0" dy="1.8" stdDeviation="1.1" floodColor="#101b17" floodOpacity=".95" />
-        </filter>
+        <PieceOutline id={outline} withArt />
+        <PieceOutline id={rim} />
         <filter id={`${ids}-shoals`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9" /></filter>
         <filter id={`${ids}-shore-warp`} x="-12%" y="-12%" width="124%" height="124%" colorInterpolationFilters="sRGB">
           <feTurbulence type="fractalNoise" baseFrequency=".058 .081" numOctaves="2" seed="13" result="grain" />
@@ -250,9 +271,10 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
         );
       })}
       {ports.map((port) => <Harbor key={port.id} port={port} resourceMeta={resourceMeta} />)}
-      <RoadNetwork edges={edges} vertices={vertices} colors={colors} gravel={gravel} />
+      <RoadNetwork routes={routes} colors={colors} gravel={gravel} />
       {edges.filter((e) => roads.has(e.id) && !landing.has(e.a) && !landing.has(e.b)).map((e) => {
         const a = vertices[e.a], b = vertices[e.b], choose = () => onAction("placeRoad", { edgeId: e.id });
+        const course = roadCourse(a, b, meId);
         if (previewRoads) {
           // Leave room at either end for settlement targets and neighboring roads.
           const dx = (b.x - a.x) / 6, dy = (b.y - a.y) / 6;
@@ -260,46 +282,41 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
             <BuildPreview key={e.id} onBuild={choose} hit={
               <line x1={a.x + dx} y1={a.y + dy} x2={b.x - dx} y2={b.y - dy} stroke="transparent" strokeWidth="24" />
             }>
-              <RoadPreview a={a} b={b} color={colors[meId].color} gravel={gravel} />
+              <RoadPreview course={course} color={colors[meId].color} gravel={gravel} />
             </BuildPreview>
           );
         }
         return (
           <g key={e.id} className="road-target" role="button" tabIndex="0" aria-label={`Build road ${e.id}`} onClick={choose} onKeyDown={(event) => activateOnKey(event, choose)}>
-            <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#ffe2a0" strokeWidth="5" strokeDasharray="5 5" strokeLinecap="round" />
+            <path d={course.bed} fill="none" stroke="#ffe2a0" strokeWidth="5" strokeDasharray="5 5" strokeLinecap="round" />
             <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth="22" />
             <circle cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2} r="11" fill="transparent" />
           </g>
         );
       })}
-      {game.board.vertices.filter((v) => v.building).map((v) => {
+      {boardVertices.filter((v) => v.building).map((v) => {
         const { type, owner } = v.building, selectable = cities.has(v.id);
         const choose = () => onAction("upgradeCity", { vertexId: v.id });
-        const { filter } = colors[owner] || {};
-        const renderPiece = (kind) => (
-          <Building type={kind} filter={filter} clip={`${ids}-shape-${kind}`} outline={outline} gravel={gravel} x={v.x} y={v.y} />
-        );
         return (
           <PlacedBuilding key={v.id} vertexId={v.id} landing={landing.has(v.id)} onLanded={finishLanding}>
             {selectable && previewCities ? (
-              <CityUpgradePreview x={v.x} y={v.y} onBuild={choose} renderPiece={renderPiece} />
+              <CityUpgradePreview x={v.x} y={v.y} onBuild={choose} renderPiece={kind => renderPiece(kind, owner, v)} />
             ) : (
               <g role={selectable ? "button" : undefined} tabIndex={selectable ? 0 : undefined} className={selectable ? "city-target" : ""}
                 aria-label={selectable ? `Upgrade settlement ${v.id}` : undefined} onClick={selectable ? choose : undefined} onKeyDown={selectable ? (event) => activateOnKey(event, choose) : undefined}>
                 {selectable && <circle cx={v.x} cy={v.y} r="21" fill="#f5d58b" fillOpacity=".3" stroke="#ffe3a5" strokeDasharray="4 3" />}
-                {renderPiece(type)}
+                {renderPiece(type, owner, v)}
               </g>
             )}
           </PlacedBuilding>
         );
       })}
-      {game.board.vertices.filter((v) => settlements.has(v.id)).map((v) => {
+      {boardVertices.filter((v) => settlements.has(v.id)).map((v) => {
         const choose = () => onAction("placeSettlement", { vertexId: v.id });
         if (previewSettlements) {
-          const { filter } = colors[meId];
           return (
             <BuildPreview key={v.id} onBuild={choose} hit={<circle cx={v.x} cy={v.y} r="15" fill="transparent" />}>
-              <Building type="settlement" filter={filter} clip={`${ids}-shape-settlement`} outline={outline} gravel={gravel} x={v.x} y={v.y} />
+              {renderPiece("settlement", meId, v)}
             </BuildPreview>
           );
         }

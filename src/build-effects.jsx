@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { roadCourse } from "./board-roads.jsx";
 import "./build-effects.css";
 
 export const SETTLEMENT_LANDING_MS = 500;
@@ -24,10 +25,10 @@ function newPlacements(before, board, vertices) {
   const placements = [];
   for (const edge of board.edges) {
     if (!edge.owner || oldRoads.has(edge.id)) continue;
-    const a = vertices[edge.a], b = vertices[edge.b];
+    const { pointAt } = roadCourse(vertices[edge.a], vertices[edge.b], edge.owner);
     placements.push({
       key: `road:${edge.id}`, kind: "road", delay: 0, size: .62,
-      points: [.29, .71].map(t => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })),
+      points: [.29, .71].map(pointAt),
     });
   }
   for (const { id, x, y, building } of board.vertices) {

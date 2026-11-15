@@ -349,7 +349,7 @@ select:disabled {
   stroke: #69895a;
   stroke-width: 3;
 }
-.road-target:hover > line:first-child {
+.road-target:hover > path:first-child {
   stroke: #fff4d0;
   stroke-width: 9;
 }
