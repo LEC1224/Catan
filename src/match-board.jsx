@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Anchor, Minus, Plus, RotateCcw } from "lucide-react";
 import { boardScenery, HOME_CAMERA, moveCamera, productionPips, terrainVariants } from "./board-layout.js";
 import { BuildPreview, CityUpgradePreview } from "./build-preview.jsx";
@@ -8,6 +8,7 @@ import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
 const DIMENSIONS = { x: 400, y: 280, width: 800, height: 560, fullWidth: 800, fullHeight: 560 };
 const OCEAN_TILE_WIDTH = 1536, OCEAN_TILE_HEIGHT = 1024;
 const OCEAN_BLEED = 8; // World units beyond the viewport for the animated drift.
+const SETTLEMENT_LANDING_MS = 500;
 const ROOFS = {
   settlement: "M145 390 244 262 266 242 272 246 375 206 456 155 485 156 588 349 575 378 367 466 269 294 168 413 145 418Z",
   city: "M849 219 883 194 910 155 928 179 965 207 961 235 895 246Z M839 315 1015 258 1065 256 1098 321 1075 347 950 381Z M1209 200 1249 185 1280 228 1255 255 1221 245Z M1183 323 1242 268 1290 262 1346 304 1312 356 1211 348Z M1115 405 1169 341 1234 357 1270 406 1223 442 1151 441Z M1284 402 1353 365 1383 391 1362 425 1327 431Z M784 425 825 381 932 409 957 437 930 453 875 469Z M986 459 1018 406 1149 405 1165 448 1147 479 1012 475Z M901 528 929 486 998 516 978 551Z M1193 522 1243 472 1303 460 1327 495 1254 540Z",
@@ -51,6 +52,47 @@ function Building({ type, color, filter, clip, outline, x, y }) {
       </PieceArt>
     </g>
   );
+}
+
+function useSettlementLandings(vertices, meId) {
+  const settlements = useMemo(() => new Set(vertices
+    .filter((v) => v.building?.type === "settlement" && v.building.owner === meId)
+    .map((v) => v.id)), [vertices, meId]);
+  const [state, setState] = useState(() => ({ settlements, landing: new Set() }));
+  if (state.settlements !== settlements) {
+    // Update before committing the snapshot so new road targets never appear early.
+    const landing = new Set([...settlements].filter((id) => state.landing.has(id) || !state.settlements.has(id)));
+    setState({ settlements, landing });
+  }
+  const finish = useCallback((id) => setState((current) => {
+    const landing = new Set(current.landing);
+    landing.delete(id);
+    return { ...current, landing };
+  }), []);
+  return [state.landing, finish];
+}
+
+function PlacedBuilding({ vertexId, landing, onLanded, children }) {
+  const piece = useRef(null);
+  useLayoutEffect(() => {
+    if (!landing) return;
+    const node = piece.current;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !node.animate) {
+      // Keep the double-click guard even when the piece appears without motion.
+      const timer = setTimeout(() => onLanded(vertexId), SETTLEMENT_LANDING_MS);
+      return () => clearTimeout(timer);
+    }
+    const motion = node.animate([
+      { transform: "translateY(-18px)", opacity: .65, easing: "ease-in" },
+      { transform: "translateY(1px)", opacity: 1, offset: .76, easing: "ease-out" },
+      { transform: "translateY(0)", opacity: 1 },
+    ], { duration: SETTLEMENT_LANDING_MS });
+    let mounted = true;
+    const finish = () => { if (mounted) onLanded(vertexId); };
+    motion.finished.then(finish, finish);
+    return () => { mounted = false; motion.cancel(); };
+  }, [landing, onLanded, vertexId]);
+  return <g ref={piece}>{children}</g>;
 }
 
 function Robber({ hex, outline }) {
@@ -158,6 +200,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
   const settlements = new Set(isActive && (game.phase === "setupSettlement" || mode === "settlement" || previewSettlements) ? legal.settlements : []);
   const roads = new Set(isActive && (game.phase === "setupRoad" || game.roadBuildingRemaining || mode === "road" || previewRoads) ? legal.roads : []);
   const cities = new Set(isActive && (mode === "city" || previewCities) ? legal.cities : []);
+  const [landing, finishLanding] = useSettlementLandings(game.board.vertices, meId);
   const robber = robberPlacement(game, meId);
   return (
     <>
@@ -216,7 +259,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
       })}
       {ports.map((port) => <Harbor key={port.id} port={port} resourceMeta={resourceMeta} />)}
       {edges.filter((e) => e.owner).map((e) => <Road key={e.id} a={vertices[e.a]} b={vertices[e.b]} color={colors[e.owner]?.color} />)}
-      {edges.filter((e) => roads.has(e.id)).map((e) => {
+      {edges.filter((e) => roads.has(e.id) && !landing.has(e.a) && !landing.has(e.b)).map((e) => {
         const a = vertices[e.a], b = vertices[e.b], choose = () => onAction("placeRoad", { edgeId: e.id });
         if (previewRoads) {
           // Leave room at either end for settlement targets and neighboring roads.
@@ -244,15 +287,18 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
         const renderPiece = (kind) => (
           <Building type={kind} color={color} filter={filter} clip={`${ids}-shape-${kind}`} outline={outline} x={v.x} y={v.y} />
         );
-        if (selectable && previewCities) {
-          return <CityUpgradePreview key={v.id} x={v.x} y={v.y} onBuild={choose} renderPiece={renderPiece} />;
-        }
         return (
-          <g key={v.id} role={selectable ? "button" : undefined} tabIndex={selectable ? 0 : undefined} className={selectable ? "city-target" : ""}
-            aria-label={selectable ? `Upgrade settlement ${v.id}` : undefined} onClick={selectable ? choose : undefined} onKeyDown={selectable ? (event) => activateOnKey(event, choose) : undefined}>
-            {selectable && <circle cx={v.x} cy={v.y} r="21" fill="#f5d58b" fillOpacity=".3" stroke="#ffe3a5" strokeDasharray="4 3" />}
-            {renderPiece(type)}
-          </g>
+          <PlacedBuilding key={v.id} vertexId={v.id} landing={landing.has(v.id)} onLanded={finishLanding}>
+            {selectable && previewCities ? (
+              <CityUpgradePreview x={v.x} y={v.y} onBuild={choose} renderPiece={renderPiece} />
+            ) : (
+              <g role={selectable ? "button" : undefined} tabIndex={selectable ? 0 : undefined} className={selectable ? "city-target" : ""}
+                aria-label={selectable ? `Upgrade settlement ${v.id}` : undefined} onClick={selectable ? choose : undefined} onKeyDown={selectable ? (event) => activateOnKey(event, choose) : undefined}>
+                {selectable && <circle cx={v.x} cy={v.y} r="21" fill="#f5d58b" fillOpacity=".3" stroke="#ffe3a5" strokeDasharray="4 3" />}
+                {renderPiece(type)}
+              </g>
+            )}
+          </PlacedBuilding>
         );
       })}
       {game.board.vertices.filter((v) => settlements.has(v.id)).map((v) => {
