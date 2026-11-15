@@ -118,8 +118,8 @@ export function MatchShortcuts({ scope, onChat, onEscape }) {
 export function KeyboardShortcuts({ tableNavigation = false }) {
   const heading = useId();
   const entries = [
-    [["Space", "Enter"], "Activate the control you focused with the keyboard. Otherwise, roll when the dice are ready, accept the displayed offer if you can, or click the button, card or board spot under your pointer."],
-    [["Esc"], `Close the rules, confirmation or open card, or leave the message field. Otherwise, decline the displayed incoming offer, cancel your build selection or close the trade tray${tableNavigation ? " or a compact side panel" : ""}.`],
+    [["Space", "Enter"], "Activate the focused control. Otherwise, roll when the dice are ready, accept a single incoming offer if you can, or click the button, card or board spot under your pointer."],
+    [["Esc"], `Close the rules, confirmation or open card, or leave the message field. Otherwise, decline a single incoming offer you haven’t answered, cancel your build selection or close the trade tray${tableNavigation ? " or a compact side panel" : ""}.`],
     [[actionKeys.chat], "Open chat and focus the message field. Press Enter in the field to send."],
     [[actionKeys.development], "Buy a development card."],
     [[actionKeys.road, actionKeys.settlement, actionKeys.city], "Select Road, Settlement or City, then choose a location on the board."],

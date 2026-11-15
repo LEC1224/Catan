@@ -647,40 +647,42 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
           <Board key={lobby.matchId || lobby.id} game={game} matchId={lobby.matchId} meId={meId} mode={selectedBuild}
             canBuild={dev ? {} : canBuild} busy={!!busy} onAction={action} resourceMeta={META} />
         </section>
-        {offers.length > 0 && <TradeOffers offers={offers} game={game} me={me} busy={!!busy} onAction={action} resourceTypes={RES} resourceMeta={META} />}
-        <aside id="match-activity" className="game-sidebar" data-view={sidebar} aria-label="Game activity" hidden={!activityOpen}>
-          <div className="match-activity-tabs" role="group" aria-label="Game activity view">
-            <button
-              className="match-command"
-              aria-pressed={sidebar === "activity"}
-              onClick={() => setSidebar("activity")}
-            >
-              <ScrollText size={14} />
-              Game log
-            </button>
-            <button
-              className="match-command"
-              aria-pressed={sidebar === "chat"}
-              {...shortcutProps("chat")}
-              onClick={() => setSidebar("chat")}
-            >
-              <MessageSquare size={14} />
-              Chat
-            </button>
-          </div>
-          {sidebar === "chat" ? (
-            <Chat lobby={lobby} command={command} compact />
-          ) : (
-            <div className="activity-feed">
-              {[...(game.log || [])].reverse().map((entry, i) => (
-                <div className="activity-entry" key={`${entry.at}-${i}`}>
-                  <span className="activity-bullet" />
-                  <p>{gameLogText(entry.text)}</p>
-                </div>
-              ))}
+        <div className="match-side-rail">
+          {offers.length > 0 && <TradeOffers offers={offers} game={game} me={me} busy={!!busy} onAction={action} resourceTypes={RES} resourceMeta={META} />}
+          <aside id="match-activity" className="game-sidebar" data-view={sidebar} aria-label="Game activity" hidden={!activityOpen}>
+            <div className="match-activity-tabs" role="group" aria-label="Game activity view">
+              <button
+                className="match-command"
+                aria-pressed={sidebar === "activity"}
+                onClick={() => setSidebar("activity")}
+              >
+                <ScrollText size={14} />
+                Game log
+              </button>
+              <button
+                className="match-command"
+                aria-pressed={sidebar === "chat"}
+                {...shortcutProps("chat")}
+                onClick={() => setSidebar("chat")}
+              >
+                <MessageSquare size={14} />
+                Chat
+              </button>
             </div>
-          )}
-        </aside>
+            {sidebar === "chat" ? (
+              <Chat lobby={lobby} command={command} compact />
+            ) : (
+              <div className="activity-feed">
+                {[...(game.log || [])].reverse().map((entry, i) => (
+                  <div className="activity-entry" key={`${entry.at}-${i}`}>
+                    <span className="activity-bullet" />
+                    <p>{gameLogText(entry.text)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </aside>
+        </div>
         {drawer && <button type="button" className="match-drawer-shade" tabIndex={-1} aria-label="Close panel" onClick={() => setDrawer(null)} />}
       </div>
       <section className="match-dock" aria-label="Turn controls and cards">
@@ -836,7 +838,8 @@ function Guide({ onClose, feedback }) {
         <Anchor size={22} />
         <p>
           Bank trades are 4 identical resources for 1. Build at a port to trade
-          at 3:1, or 2:1 for its resource. Only the active player can trade.
+          at 3:1, or 2:1 for its resource. The active player can also post offers.
+          Other players can accept, and the sender chooses one of them to complete the trade.
         </p>
       </div>
       <KeyboardShortcuts tableNavigation />

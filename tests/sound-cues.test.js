@@ -60,7 +60,7 @@ test("automatic dice rolls have a cue even when the timer moves straight to the 
   }
 });
 
-test("new offers and completed trades have distinct cues; declining and withdrawing are silent", () => {
+test("new offers and acceptances use the offer cue; only confirmed trades play the trade cue", () => {
   const game = createGame(room.players);
   game.phase = "action";
   game.players[0].resources.wood = 1;
@@ -83,9 +83,15 @@ test("new offers and completed trades have distinct cues; declining and withdraw
   action(game, host.id, "cancelTrade", { offerId: game.tradeOffers[0].id });
   assert.deepEqual(lobbySoundCues(declined, snapshot(game, guest.id)), []);
   action(game, host.id, "offerTrade", { ...offer, want: { wheat: 1 } });
-  const beforeDeal = snapshot(game, guest.id);
-  action(game, guest.id, "acceptTrade", { offerId: game.tradeOffers[0].id });
-  assert.deepEqual(lobbySoundCues(beforeDeal, snapshot(game, guest.id)), ["trade"]);
+  const beforeAcceptance = snapshot(game, guest.id);
+  const senderBeforeAcceptance = snapshot(game, host.id);
+  const offerId = game.tradeOffers[0].id;
+  action(game, guest.id, "acceptTrade", { offerId });
+  const accepted = snapshot(game, guest.id);
+  assert.deepEqual(lobbySoundCues(beforeAcceptance, accepted), []);
+  assert.deepEqual(lobbySoundCues(senderBeforeAcceptance, snapshot(game, host.id)), ["offer"]);
+  action(game, host.id, "confirmTrade", { offerId, recipientId: guest.id });
+  assert.deepEqual(lobbySoundCues(accepted, snapshot(game, guest.id)), ["trade"]);
 });
 
 test("only players who owe a discard hear the urgent seven warning and their card return", () => {

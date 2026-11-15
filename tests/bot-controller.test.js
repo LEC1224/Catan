@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { attachBotController } from '../src/bots/controller.js';
 import { createBotEvaluator } from '../src/bots/worker.js';
-import { createGame, viewGame } from '../server/game.js';
+import { action, createGame, viewGame } from '../server/game.js';
 
 function controller(t) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -143,4 +143,26 @@ test('worker evaluation reports only the remaining trade wait and resets memory 
   assert.deepEqual(evaluate(observation(), 6999), { key: 'key', action: null, retryAfter: 1 });
   assert.deepEqual(evaluate(observation(), 7000), { key: 'key', botId: 'bot', action: { type: 'cancelTrade', offerId: 'offer' } });
   assert.deepEqual(evaluate(observation('new-match'), 7000), { key: 'key', action: null, retryAfter: 6000 });
+});
+
+test('worker confirms a pending trade after the response window or once every player answers', () => {
+  const game = createGame([{ id: 'bot' }, { id: 'leader' }, { id: 'rival' }], { seed: 'worker' });
+  game.phase = 'action';
+  game.players[0].resources.wood = 1;
+  game.players[1].resources.ore = game.players[2].resources.ore = 1;
+  action(game, 'bot', 'offerTrade', { give: { wood: 1 }, want: { ore: 1 } });
+  const offerId = game.tradeOffers[0].id;
+  const evaluate = createBotEvaluator();
+  const observation = () => ({ key: 'key', state: {
+    matchId: 'match', bots: [{ id: 'bot', difficulty: 'normal', game: viewGame(game, 'bot') }],
+  } });
+  assert.deepEqual(evaluate(observation(), 1000), { key: 'key', action: null, retryAfter: 6000 });
+  action(game, 'leader', 'acceptTrade', { offerId });
+  assert.deepEqual(evaluate(observation(), 5000), { key: 'key', action: null, retryAfter: 2000 });
+  const singleAcceptance = observation();
+  action(game, 'rival', 'acceptTrade', { offerId });
+  game.players[1].visibleScore = 5;
+  const confirm = recipientId => ({ key: 'key', botId: 'bot', action: { type: 'confirmTrade', offerId, recipientId } });
+  assert.deepEqual(evaluate(observation(), 6000), confirm('rival'));
+  assert.deepEqual(evaluate(singleAcceptance, 7000), confirm('leader'));
 });

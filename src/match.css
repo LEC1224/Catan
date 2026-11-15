@@ -422,11 +422,24 @@
   pointer-events: none;
 }
 
-.match-stage .game-sidebar {
+.match-side-rail {
+  position: absolute;
   z-index: 2;
   right: clamp(8px, 1.1vw, 17px);
+  top: 6px;
   bottom: 9px;
-  width: min(210px, var(--offer-width));
+  width: var(--offer-width);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  pointer-events: none;
+}
+.match-stage .game-sidebar {
+  position: relative;
+  flex: none;
+  margin-top: auto;
+  width: min(210px, 100%);
   height: clamp(118px, 26%, 184px);
   gap: 6px;
   padding: 7px;
@@ -434,10 +447,11 @@
   border-radius: 6px;
   background: linear-gradient(135deg, #263e36ed, #112e28f2);
   box-shadow: 0 3px 13px #081e1e7a;
+  pointer-events: auto;
 }
 .match-stage .game-sidebar[hidden] { display: none; }
 .match-stage .game-sidebar[data-view="chat"] {
-  width: min(280px, var(--offer-width));
+  width: min(280px, 100%);
   height: clamp(220px, 55%, 340px);
   max-height: calc(100% - 18px);
 }
@@ -807,7 +821,7 @@
     box-shadow: 0 6px 24px #0a1a1cb8;
   }
   .match-stage .players-panel.drawer-open { display: flex; }
-  .match-stage .game-sidebar { width: min(225px, calc(100% - 16px)); height: clamp(142px, 34%, 206px); }
+  .match-stage .game-sidebar { width: min(225px, 100%); height: clamp(142px, 34%, 206px); }
   .match-drawer-shade {
     display: block;
     position: absolute;

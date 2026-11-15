@@ -37,6 +37,8 @@ test('bot policy trades and discards outside its turn without opponent private h
   ];
   const view = viewGame(g, 'bot'); assert.equal(view.players[0].resources, null);
   assert.deepEqual(chooseBotAction(view, 'bot'), { type: 'acceptTrade', offerId: 'offer' });
+  g.tradeOffers[1].acceptedBy = ['bot'];
+  assert.deepEqual(chooseBotAction(viewGame(g, 'bot'), 'bot'), { type: 'declineTrade', offerId: 'bad' });
   g.tradeOffers.pop();
   assert.deepEqual(chooseBotAction(viewGame(g, 'bot'), 'bot'), { type: 'declineTrade', offerId: 'bad' });
   g.phase = 'discard'; g.discardRequired = { bot: 2 };

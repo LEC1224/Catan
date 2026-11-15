@@ -139,7 +139,7 @@ test('six clients can join, ready, start an expanded match and synchronize initi
   for (const client of clients) { await call(client, 'getDirectory'); assert.equal(client.lobby.game.phase, 'roll'); }
 });
 
-test('a recipient can decline a pending offer during another player’s turn', async t => {
+test('multiplayer trade responses stay pending until the sender chooses whom to trade with', async t => {
   const server = await createAppServer({ port: 0, testMode: true, persistence: false });
   const clients = [];
   t.after(async () => { clients.forEach(c => c.disconnect()); await server.close(); });
@@ -155,10 +155,13 @@ test('a recipient can decline a pending offer during another player’s turn', a
   const room = server.lobbies.get(id);
   const sender = clients.find(client => client.playerId === room.game.activePlayerId);
   const [recipient, otherRecipient] = clients.filter(client => client !== sender);
-  // Seed the first action phase, leaving the recipients without any cards.
+  // Both recipients can pay for the second offer, but neither can pay for the first.
   room.game.phase = 'action';
-  room.game.players.find(player => player.id === sender.playerId).resources.wood = 2;
+  const hand = (client) => room.game.players.find(player => player.id === client.playerId).resources;
+  hand(sender).wood = 2;
+  hand(recipient).brick = hand(otherRecipient).brick = 1;
   room.game.bank.wood -= 2;
+  room.game.bank.brick -= 2;
   const send = (client, type, payload) => call(client, 'gameAction', { type, ...payload });
   assert.equal((await send(sender, 'offerTrade', { give: { wood: 1 }, want: { ore: 1 } })).ok, true);
   assert.equal((await send(sender, 'offerTrade', { give: { wood: 1 }, want: { brick: 1 } })).ok, true);
@@ -173,11 +176,35 @@ test('a recipient can decline a pending offer during another player’s turn', a
   await call(otherRecipient, 'getDirectory');
   assert.deepEqual(otherRecipient.lobby.game.tradeOffers.map(offer => offer.id), [first, second]);
 
+  const frames = room.recording.frames.length;
+  assert.equal((await send(recipient, 'acceptTrade', { offerId: second })).ok, true);
+  assert.equal(recipient.lobby.game.tradeOffers[0].accepted, true);
+  await call(otherRecipient, 'getDirectory');
+  const stillOpen = otherRecipient.lobby.game.tradeOffers.find(offer => offer.id === second);
+  assert.equal(stillOpen.accepted, false);
+  assert.equal(stillOpen.acceptedBy, undefined);
+  assert.equal((await send(otherRecipient, 'acceptTrade', { offerId: second })).ok, true);
+  await call(sender, 'getDirectory');
+  assert.deepEqual(sender.lobby.game.tradeOffers.find(offer => offer.id === second).acceptedBy, [recipient.playerId, otherRecipient.playerId]);
+  assert.deepEqual([hand(sender).wood, hand(recipient).brick, hand(otherRecipient).brick], [2, 1, 1]);
+  assert.equal(room.recording.frames.length, frames);
+  const confirm = { offerId: second, recipientId: otherRecipient.playerId };
+  const revision = room.botRevision;
+  assert.match((await send(recipient, 'confirmTrade', confirm)).error, /Only the sender/);
+  assert.equal(room.botRevision, revision);
+
   room.game.phase = 'robber';
-  assert.equal((await send(recipient, 'acceptTrade', { offerId: second })).ok, false);
-  assert.equal((await send(recipient, 'declineTrade', { offerId: second })).ok, true, 'declining need not wait for the robber to move');
-  assert.deepEqual(recipient.lobby.game.tradeOffers, []);
+  assert.match((await send(otherRecipient, 'acceptTrade', { offerId: first })).error, /not available/);
+  assert.match((await send(sender, 'confirmTrade', confirm)).error, /not available/);
+  assert.equal((await send(otherRecipient, 'declineTrade', { offerId: first })).ok, true, 'declining need not wait for the robber to move');
   assert.equal(room.game.activePlayerId, sender.playerId);
   assert.equal(room.game.phase, 'robber');
-  assert.equal(room.game.players.find(player => player.id === sender.playerId).resources.wood, 2);
+
+  room.game.phase = 'action';
+  assert.equal((await send(sender, 'confirmTrade', confirm)).ok, true);
+  assert.deepEqual(sender.lobby.game.tradeOffers, []);
+  assert.deepEqual([hand(sender).wood, hand(sender).brick, hand(otherRecipient).wood, hand(otherRecipient).brick], [1, 1, 1, 0]);
+  assert.deepEqual([hand(recipient).wood, hand(recipient).brick], [0, 1]);
+  assert.equal(room.recording.frames.length, frames + 1);
+  assert.equal(room.recording.frames.at(-1).move.type, 'confirmTrade');
 });

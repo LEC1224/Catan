@@ -321,39 +321,49 @@ export function createGame(players, settings = {}) {
   return g;
 }
 
-function respondToTrade(g, p, type, offerId, moves) {
+function respondToTrade(g, p, type, { offerId, recipientId }, moves) {
   // Turning an offer down doesn't spend cards or interrupt a pending board action.
   if (type !== 'declineTrade') requireThat(playerTradesAvailable(g), 'Player trading is not available now.');
-  // Older clients can accept or withdraw the only offer they can see.
-  const legacyResponse = offerId === undefined && type !== 'declineTrade' && g.tradeOffers.length === 1;
+  // Older clients can still respond to or withdraw a single open offer.
+  const legacyResponse = offerId === undefined && (type === 'acceptTrade' || type === 'cancelTrade') && g.tradeOffers.length === 1;
   const index = legacyResponse ? 0 : g.tradeOffers.findIndex((offer) => offer.id === offerId);
   requireThat(index >= 0, 'That trade offer is no longer open.');
   const offer = g.tradeOffers[index];
-  if (type === 'cancelTrade') {
-    requireThat(offer.from === p.id, 'Only the sender can withdraw this offer.');
+  const sender = player(g, offer.from);
+  if (type === 'cancelTrade' || type === 'confirmTrade') {
+    requireThat(offer.from === p.id && g.activePlayerId === p.id, 'Only the sender can withdraw or confirm this offer.');
+    if (type === 'confirmTrade') {
+      const recipient = offer.acceptedBy?.includes(recipientId) && player(g, recipientId);
+      requireThat(recipient && !offer.declinedBy?.includes(recipientId), 'That player has not accepted this offer or their acceptance is no longer valid.');
+      requireThat(canPay(sender, offer.give) && canPay(recipient, offer.want), 'One player no longer has the offered resources.');
+      for (const r of RESOURCES) {
+        const change = (offer.give[r] ?? 0) - (offer.want[r] ?? 0);
+        recipient.resources[r] += change;
+        sender.resources[r] -= change;
+      }
+      moveResources(moves, playerHand(sender.id), playerHand(recipient.id), offer.give);
+      moveResources(moves, playerHand(recipient.id), playerHand(sender.id), offer.want);
+      addLog(g, `${sender.name} traded with ${recipient.name}.`, 'trade');
+    }
     g.tradeOffers.splice(index, 1);
     return;
   }
   requireThat(offer.from !== p.id, 'You cannot respond to your own offer.');
-  requireThat(!offer.declinedBy.includes(p.id), 'You already declined this offer.');
-  const sender = player(g, offer.from);
+  requireThat(!offer.declinedBy?.includes(p.id), 'You already declined this offer.');
   if (type === 'declineTrade') {
+    offer.declinedBy ??= [];
     offer.declinedBy.push(p.id);
+    if (offer.acceptedBy) offer.acceptedBy = offer.acceptedBy.filter(id => id !== p.id);
     if (offer.declinedBy.length === g.players.length - 1) {
       g.tradeOffers.splice(index, 1);
       addLog(g, `All players declined ${sender.name}’s offer.`);
     }
     return;
   }
+  requireThat(!offer.acceptedBy?.includes(p.id), 'You already accepted this offer.');
   requireThat(canPay(sender, offer.give) && canPay(p, offer.want), 'One player no longer has the offered resources.');
-  for (const r of RESOURCES) {
-    p.resources[r] += offer.give[r] - offer.want[r];
-    sender.resources[r] += offer.want[r] - offer.give[r];
-  }
-  moveResources(moves, playerHand(sender.id), playerHand(p.id), offer.give);
-  moveResources(moves, playerHand(p.id), playerHand(sender.id), offer.want);
-  g.tradeOffers.splice(index, 1);
-  addLog(g, `${p.name} traded with ${sender.name}.`, 'trade');
+  offer.acceptedBy ??= [];
+  offer.acceptedBy.push(p.id);
 }
 
 function applyAction(g, id, type, payload, moves) {
@@ -368,7 +378,7 @@ function applyAction(g, id, type, payload, moves) {
     if (!Object.keys(g.discardRequired).length) activateRobber(g);
     return;
   }
-  if (['acceptTrade', 'declineTrade', 'cancelTrade'].includes(type)) return respondToTrade(g, p, type, payload.offerId, moves);
+  if (['acceptTrade', 'declineTrade', 'cancelTrade', 'confirmTrade'].includes(type)) return respondToTrade(g, p, type, payload, moves);
   requireThat(g.activePlayerId === id, 'Wait for your turn.');
   if (g.roadBuildingRemaining) requireThat(type === 'placeRoad', 'Finish placing your free roads first.');
   switch (type) {
@@ -464,7 +474,7 @@ function applyAction(g, id, type, payload, moves) {
       const give = resourceMap(payload.give, { nonzero: true }), want = resourceMap(payload.want, { nonzero: true });
       requireThat(!RESOURCES.some(r => give[r] && want[r]), 'The same resource cannot appear on both sides of a trade.');
       requireThat(canPay(p, give), 'You do not have the offered resources.');
-      g.tradeOffers.push({ id: randomUUID(), from: id, give, want, declinedBy: [] }); break;
+      g.tradeOffers.push({ id: randomUUID(), from: id, give, want, declinedBy: [], acceptedBy: [] }); break;
     }
     case 'buyDevelopment': {
       requireThat(g.phase === 'action', 'Buy development cards during your action phase.');
@@ -517,6 +527,12 @@ export function nextGame(game, playerId, type, payload = {}) {
     const sender = player(draft, offer.from);
     return sender && canPay(sender, offer.give);
   });
+  for (const offer of draft.tradeOffers) if (offer.acceptedBy?.length) {
+    offer.acceptedBy = offer.acceptedBy.filter(id => {
+      const recipient = player(draft, id);
+      return recipient && canPay(recipient, offer.want);
+    });
+  }
   updateScores(draft); checkVictory(draft);
   // Card transfers include completed trades. Free roads and development plays
   // can also earn time without transferring cards.
@@ -538,9 +554,9 @@ export function viewGame(g, playerId) {
   // should never be copied once for every connected browser and bot.
   const { developmentDeck, playedDevelopment, setupOrder, setupIndex, setupVertexId, robberReturnPhase, roadBuildingReturnPhase, primaryIndex, cardDeals, ...visible } = g;
   visible.cardDeals = viewCardDeals(cardDeals, playerId);
-  visible.tradeOffers = openTradeOffers(visible).flatMap(({ declinedBy = [], ...offer }) => {
-    if (offer.from === playerId) return [{ ...offer, declinedBy }];
-    return declinedBy.includes(playerId) ? [] : [offer];
+  visible.tradeOffers = openTradeOffers(visible).flatMap(({ declinedBy = [], acceptedBy = [], ...offer }) => {
+    if (offer.from === playerId) return [{ ...offer, declinedBy, acceptedBy }];
+    return declinedBy.includes(playerId) ? [] : [{ ...offer, accepted: acceptedBy.includes(playerId) }];
   });
   visible.tradeOffer = visible.tradeOffers.length === 1 ? visible.tradeOffers[0] : null;
   visible.developmentRemaining = g.settings.unlimitedDevelopmentCards ? null : developmentDeck.length;

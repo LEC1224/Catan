@@ -201,7 +201,7 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
   const trading = playerTradesAvailable(g);
   const offers = openTradeOffers(g);
   if (trading && g.activePlayerId !== id) {
-    const incoming = offers.filter(offer => offer.from !== id);
+    const incoming = offers.filter(offer => offer.from !== id && !offer.accepted);
     if (incoming.length) {
       const value = map => RESOURCES.reduce((n, r) => n + (map[r] || 0) * (1 + 2 / (1 + p.resources[r]) + (c.production[r] === 0 ? 0.7 : 0)), 0);
       const good = incoming.map(offer => {
@@ -237,8 +237,13 @@ export function chooseBotAction(g, id, difficulty = 'normal', memory = {}, rando
   const own = trading && offers.find(offer => offer.from === id);
   if (own) {
     memory.offerUntil ??= now + 6000;
-    return now >= memory.offerUntil ? { type: 'cancelTrade', offerId: own.id } : null;
+    const accepted = own.acceptedBy ?? [];
+    if (now < memory.offerUntil && accepted.length + (own.declinedBy?.length ?? 0) < g.players.length - 1) return null;
+    const recipient = g.players.filter(other => accepted.includes(other.id)).sort((a, b) =>
+      Number(areTeammates(g, id, b.id)) - Number(areTeammates(g, id, a.id)) || a.visibleScore - b.visibleScore)[0];
+    return recipient ? { type: 'confirmTrade', offerId: own.id, recipientId: recipient.id } : { type: 'cancelTrade', offerId: own.id };
   }
+  delete memory.offerUntil;
   const options = goals(g, id, c, difficulty);
   const achievable = achievableGoal(options, g, c, difficulty, memory, random);
   const target = options.find(o => JSON.stringify(o.action) === memory.exchangeGoal) || pick(options.map(o => ({ ...o, score: o.score / (1 + missing(p.resources, COST[o.action.type]) * 0.6) + (memory.goal === JSON.stringify(o.action) ? 2 : 0) })), difficulty, random);

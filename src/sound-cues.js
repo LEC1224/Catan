@@ -49,8 +49,11 @@ function gameSoundCues(previous, game, meId) {
   else if (gainedCards && handSize(game) > handSize(previous)) cues.push("resources");
   if (cues.length) return cues;
 
-  const previousOffers = new Set(openTradeOffers(previous).map((offer) => offer.id));
-  if (openTradeOffers(game).some((offer) => !previousOffers.has(offer.id))) return ["offer"];
+  const previousOffers = new Map(openTradeOffers(previous).map((offer) => [offer.id, offer]));
+  if (openTradeOffers(game).some((offer) => {
+    const before = previousOffers.get(offer.id);
+    return !before || (offer.from === meId && offer.acceptedBy?.some((id) => !before.acceptedBy?.includes(id)));
+  })) return ["offer"];
   return [];
 }
 

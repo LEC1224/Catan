@@ -34,6 +34,8 @@ Enter a display name, create a public or private lobby, or join by invite code/l
 
 Click highlighted board corners and edges during setup. In normal turns roll, trade, build, buy/play development cards, then end your turn. Seven/discard, robber and theft prompts interrupt normal actions until resolved. The server validates every action and never sends opponents' resource identities or development cards to another player.
 
+Open player offers appear in a stack. **Accept** lets the sender know you’re willing to trade. The sender selects **Confirm** next to the player they want to trade with; that’s when the cards move. You can withdraw your acceptance before then. Offers expire at the end of the sender’s turn.
+
 Refresh or reconnect using the same browser to reclaim your seat. The anonymous browser token is the seat credential; clearing browser storage loses automatic access. Separate browser profiles/private sessions are needed to simulate multiple people on one machine. Multiple tabs in one browser normally represent the same player.
 
 After a win, inspect the point breakdown, score timeline, and key moments. **Replay** opens a shared board with a timeline of turns, actions, and key moments. Click a turn or key moment to jump to it, or drag through the actions to preview moves on your board. When you release, the shared replay jumps to that step. **Results** returns only your screen to the summary; **Join replay** catches you up to the room. Review ends when the host returns the room to the lobby. Games started before recording may only have part of their history.
@@ -116,7 +118,7 @@ Bot decisions run in a Web Worker in the **host's browser**, not on the server. 
 - **Normal:** resource diversity, routes to new settlements, goal-aware discards, more selective player trades, and up to two bank exchanges toward a build.
 - **Hard:** longer route evaluation, leader-aware robber/trade choices, late-game road competition, and up to five bank exchanges toward a build.
 
-These are heuristic difficulty levels, not calibrated skill ratings or full Monte Carlo search. All levels can play a complete game, including setup, discards, robber/theft, development cards, bank/port trades, player trades and paired turns. Bot offers give players six seconds to respond. Bots use only their own masked game view; the difficulty never grants extra resources or knowledge.
+These are heuristic difficulty levels, not calibrated skill ratings or full Monte Carlo search. All levels can play a complete game, including setup, discards, robber/theft, development cards, bank/port trades, player trades and paired turns. Bots wait up to six seconds for responses to their offers, then confirm with an accepting player or withdraw the offer. Bots use only their own masked game view; the difficulty never grants extra resources or knowledge.
 
 Bots compare affordable builds with complete bank-exchange plans and keep the chosen build's ingredients through the exchanges. Normal and Hard preserve affordable settlements or cities when discarding if the remaining hand can hold the full cost. Immediate winning builds take priority over playing another development card. Idle workers wait for a new game revision or their trade deadline instead of polling unchanged positions.
 

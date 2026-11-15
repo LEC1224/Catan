@@ -74,10 +74,13 @@ test('offers and failed exchanges create no flights; completed exchanges record 
   assert.throws(() => action(g, a.id, 'bankTrade', { give: 'wood', receive: 'wool', amount: 3 }));
   action(g, a.id, 'offerTrade', { give: { wood: 2, wheat: 1 }, want: { ore: 1 } });
   assert.deepEqual(viewGame(g, b.id).cardDeals, []);
-  action(g, b.id, 'acceptTrade');
+  const offerId = g.tradeOffers[0].id;
+  action(g, b.id, 'acceptTrade', { offerId });
+  assert.deepEqual(viewGame(g, b.id).cardDeals, []);
+  action(g, a.id, 'confirmTrade', { offerId, recipientId: b.id });
   action(g, a.id, 'bankTrade', { give: 'wood', receive: 'wool' });
   const [trade, exchange] = viewGame(g, a.id).cardDeals;
-  assert.equal(trade.action, 'acceptTrade');
+  assert.equal(trade.action, 'confirmTrade');
   assert.deepEqual(trade.moves, [
     resource(player(a.id), player(b.id), 'wood', 2), resource(player(a.id), player(b.id), 'wheat', 1),
     resource(player(b.id), player(a.id), 'ore', 1),

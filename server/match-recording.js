@@ -1,7 +1,7 @@
 import { gameTeams } from '../shared/teams.js';
 
 const VERSION = 1;
-const OFFER_ACTIONS = new Set(['offerTrade', 'declineTrade', 'cancelTrade']);
+const OFFER_ACTIONS = new Set(['offerTrade', 'acceptTrade', 'declineTrade', 'cancelTrade']);
 const BUILD_ACTIONS = new Set(['placeSettlement', 'placeRoad', 'upgradeCity']);
 
 function points(game) {

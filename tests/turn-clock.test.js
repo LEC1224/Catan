@@ -117,12 +117,9 @@ test('both players see the active turn gain time when a player trade completes',
   const offerId = await offer();
   await send(recipient, 'acceptTrade', { offerId });
   await call(sender, 'getDirectory');
-  // When acceptance is provisional, only the sender can complete the exchange.
-  if (sender.lobby.game.tradeOffers.some(offer => offer.id === offerId)) {
-    assert.equal(sender.lobby.game.deadline, originalDeadline);
-    await send(sender, 'confirmTrade', { offerId, recipientId: recipient.playerId });
-    await call(recipient, 'getDirectory');
-  }
+  assert.equal(sender.lobby.game.deadline, originalDeadline);
+  await send(sender, 'confirmTrade', { offerId, recipientId: recipient.playerId });
+  await call(recipient, 'getDirectory');
   for (const client of clients) {
     assert.equal(client.lobby.game.activePlayerId, sender.playerId);
     assert.equal(client.lobby.game.deadline, originalDeadline + 10_000);
