@@ -22,32 +22,54 @@ function activateOnKey(event, action) {
 
 function roofMatrix(color) {
   const rgb = (color?.match(/^#[0-9a-f]{6}$/i) ? color : "#b77d56").slice(1).match(/../g);
-  return rgb.map((channel) => `.19 .60 .07 0 ${((parseInt(channel, 16) / 255 - .5) * .78 + .055).toFixed(3)}`).join(" ") +
+  // Keep the roof texture while centering its shading on the player's color.
+  return rgb.map((channel) => `.19 .60 .07 0 ${(parseInt(channel, 16) / 255 - .35).toFixed(3)}`).join(" ") +
     " 4.4 -4.2 0 0 -.25";
 }
 
-function Building({ type, color, filter, clip, x, y }) {
-  const city = type === "city", size = city ? 51 : 41;
+function PieceArt({ column, size, y, outline, children }) {
   return (
-    <g pointerEvents="none" transform={`translate(${x},${y})`}>
-      <ellipse cy="6" rx={city ? 17 : 13} ry="6" fill="#101e16" opacity=".55" />
-      <ellipse cy="5" rx={city ? 15 : 11.5} ry="4.6" fill="#2c342b" stroke={color} strokeWidth="2" />
-      <svg x={-size / 2} y={-size + 10} width={size} height={size} viewBox={`${city ? 724 : 0} 0 724 724`}>
+    <g filter={`url(#${outline})`}>
+      <svg x={-size / 2} y={y} width={size} height={size} viewBox={`${column * 724} 0 724 724`}>
         <image href="/assets/pieces-atlas.png" width="2172" height="724" />
-        <g clipPath={`url(#${clip})`}>
-          <image href="/assets/pieces-atlas.png" width="2172" height="724" filter={`url(#${filter})`} />
-        </g>
+        {children}
       </svg>
     </g>
   );
 }
 
-function Road({ a, b, color }) {
+function Building({ type, color, filter, clip, outline, x, y }) {
+  const city = type === "city", size = city ? 54 : 45;
   return (
-    <g pointerEvents="none" strokeLinecap="round">
-      <line x1={a.x} y1={a.y + 2} x2={b.x} y2={b.y + 2} stroke="#172c22" strokeWidth="9" opacity=".58" />
-      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#eadbb3" strokeWidth="8.5" />
-      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth="5.5" />
+    <g pointerEvents="none" transform={`translate(${x},${y})`}>
+      <ellipse cy="7" rx={city ? 19 : 15} ry="6.5" fill="#101e16" opacity=".76" />
+      <ellipse cy="5" rx={city ? 16.5 : 13} ry="5.2" fill="#2c342b" stroke={color} strokeWidth="2.6" />
+      <PieceArt column={city ? 1 : 0} size={size} y={10 - size} outline={outline}>
+        <g clipPath={`url(#${clip})`}>
+          <image href="/assets/pieces-atlas.png" width="2172" height="724" filter={`url(#${filter})`} />
+        </g>
+      </PieceArt>
+    </g>
+  );
+}
+
+function Robber({ hex, outline }) {
+  return (
+    <g transform={`translate(${hex.x + (hex.number ? 24 : 0)},${hex.y - (hex.number ? 17 : 3)})`} pointerEvents="none">
+      <ellipse cy="16" rx="15" ry="5.5" fill="#101e16" opacity=".76" />
+      <PieceArt column={2} size={52} y={-33} outline={outline} />
+    </g>
+  );
+}
+
+function Road({ a, b, color }) {
+  const path = `M${a.x},${a.y}L${b.x},${b.y}`;
+  return (
+    <g pointerEvents="none" fill="none" strokeLinecap="round">
+      <path d={path} stroke="#17241e" strokeWidth="12" opacity=".9" transform="translate(0,1)" />
+      <path d={path} stroke="#f2dfb5" strokeWidth="9.5" />
+      <path d={path} stroke={color} strokeWidth="6.7" />
+      <path d={path} stroke="#fff4d3" strokeWidth="1.35" opacity=".34" transform="translate(0,-1.4)" />
     </g>
   );
 }
@@ -124,6 +146,7 @@ function TerrainImage({ h, terrain, variant }) {
 
 function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, scenery, variants }) {
   const ids = useId();
+  const outline = `${ids}-piece-outline`;
   const { vertices, polygons, shore, ports } = scenery;
   const { hexes, edges } = game.board;
   const colors = Object.fromEntries(game.players.map((p, i) => [p.id, { color: p.color, filter: `${ids}-roof-${i}` }]));
@@ -139,6 +162,16 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
   return (
     <>
       <defs>
+        <filter id={outline} x="-20%" y="-20%" width="140%" height="150%" colorInterpolationFilters="sRGB">
+          <feMorphology in="SourceAlpha" operator="dilate" radius="1.55" result="rimMask" />
+          <feFlood floodColor="#f8e3b8" floodOpacity=".94" result="rimPaint" />
+          <feComposite in="rimPaint" in2="rimMask" operator="in" result="rim" />
+          <feMerge result="outlined">
+            <feMergeNode in="rim" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+          <feDropShadow in="outlined" dx="0" dy="1.8" stdDeviation="1.1" floodColor="#101b17" floodOpacity=".95" />
+        </filter>
         <filter id={`${ids}-shoals`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9" /></filter>
         <filter id={`${ids}-shore-warp`} x="-12%" y="-12%" width="124%" height="124%" colorInterpolationFilters="sRGB">
           <feTurbulence type="fractalNoise" baseFrequency=".058 .081" numOctaves="2" seed="13" result="grain" />
@@ -177,12 +210,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
               {h.number && <NumberToken hex={h} blocked={blocked} />}
             </g>
             <polygon points={polygon} className="deal-tile-cue" data-deal-tile={h.id} aria-hidden="true" />
-            {blocked && (
-              <g transform={`translate(${h.x + (h.number ? 24 : 0)},${h.y - (h.number ? 17 : 3)})`} pointerEvents="none">
-                <ellipse cy="16" rx="13" ry="5" fill="#092522" opacity=".5" />
-                <svg x="-23" y="-28" width="46" height="46" viewBox="1448 0 724 724"><image href="/assets/pieces-atlas.png" width="2172" height="724" /></svg>
-              </g>
-            )}
+            {blocked && <Robber hex={h} outline={outline} />}
           </g>
         );
       })}
@@ -214,7 +242,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
         const choose = () => onAction("upgradeCity", { vertexId: v.id });
         const { color, filter } = colors[owner] || {};
         const renderPiece = (kind) => (
-          <Building type={kind} color={color} filter={filter} clip={`${ids}-shape-${kind}`} x={v.x} y={v.y} />
+          <Building type={kind} color={color} filter={filter} clip={`${ids}-shape-${kind}`} outline={outline} x={v.x} y={v.y} />
         );
         if (selectable && previewCities) {
           return <CityUpgradePreview key={v.id} x={v.x} y={v.y} onBuild={choose} renderPiece={renderPiece} />;
@@ -233,7 +261,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
           const { color, filter } = colors[meId];
           return (
             <BuildPreview key={v.id} onBuild={choose} hit={<circle cx={v.x} cy={v.y} r="15" fill="transparent" />}>
-              <Building type="settlement" color={color} filter={filter} clip={`${ids}-shape-settlement`} x={v.x} y={v.y} />
+              <Building type="settlement" color={color} filter={filter} clip={`${ids}-shape-settlement`} outline={outline} x={v.x} y={v.y} />
             </BuildPreview>
           );
         }
