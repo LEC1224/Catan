@@ -54,7 +54,8 @@ Lobby and game sound effects start after your first interaction. If you need to 
 | Team points to win | 16 | In 2v2, a combined target of 12–30 with at least 6 points per teammate |
 | Discard threshold | 9 for 2 seats; 8 for 3; 7 for 4–6 | On a seven, hands above this size discard half |
 | Hard hand limit | Off | Optional house rule; excess resources automatically return, taking from the largest pile first |
-| Thinking time | 120 seconds | 0 disables the clock; otherwise 30–600 seconds per decision phase |
+| Turn timer | 120 seconds | 0 disables the clock; otherwise 30–600 seconds per decision phase |
+| Time added per action | 10 seconds | Off, 5, 10, 15, 20, or 30 seconds per qualifying move while the turn timer runs |
 | Friendly robber | On for 2–3 seats; Off for 4–6 | Cannot move onto a hex touching an opponent with fewer than 3 visible points |
 | Balanced numbers | On | Prevents adjacent 6/8 tokens |
 | Unlimited Dev Cards in Bank | On | A fresh deck is shuffled when the current one runs out. Turn it off for a single deck of 25 cards (34 with expanded supplies). |
@@ -63,7 +64,7 @@ Lobby and game sound effects start after your first interaction. If you need to 
 | Paired turns | On | With 5–6 actual players, a second player receives an action phase without player trading |
 | Map seed | Random | Reproduce terrain/number/port setup; dice and card draws remain random |
 
-With the timer on, builds, completed trades (with players, the bank, or a port), and buying or playing development cards add up to 10 seconds when play stays in the current phase. The time remaining can't exceed the configured time. Each new phase starts with the configured time. When time runs out, the game makes mandatory choices automatically or ends the action phase.
+With the timer on, builds, completed trades (with players, the bank, or a port), and buying or playing development cards add the selected bonus when play stays in the current phase. The time remaining can't exceed the turn timer setting. Each new phase starts with the configured time. When time runs out, the game makes mandatory choices automatically or ends the action phase.
 
 Two-player play uses ordinary core rules as a **casual house variant**, not the official neutral-settlement/trade-token two-player scenario. Choosing a small board for 5–6 is also a deliberately crowded house variant. Expanded boards and all games with 5–6 actual players use 24 cards per resource when resources are finite, and 34 cards per development deck; choosing the small board for 5–6 changes only the island.
 

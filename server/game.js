@@ -3,12 +3,12 @@ import { resourceName } from '../shared/resource-names.js';
 import { boardMap, centerCellIndex } from '../shared/board-maps.js';
 import { DEFAULT_TEAM_TARGET, gameTeams, TEAM_MIN_POINTS, teamSeating } from '../shared/teams.js';
 import { bankTradeRate, MAX_BANK_TRADE_CARDS, MAX_TRADE_OFFERS, openTradeOffers, playerTradesAvailable, resourceStock } from '../shared/trades.js';
+import { DEFAULT_ACTION_BONUS_SECONDS } from '../shared/turn-timer.js';
 import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from './card-deals.js';
 
 import { RESOURCES, COSTS } from '../shared/game-constants.js';
 export { RESOURCES } from '../shared/game-constants.js';
-const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
-const ACTION_TIME_BONUS_MS = 10_000;
+const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, actionBonusSeconds: DEFAULT_ACTION_BONUS_SECONDS, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const fail = text => { throw new Error(text); };
@@ -35,10 +35,12 @@ function phase(g, value) {
   setDeadline(g);
 }
 function extendDeadline(g) {
+  const bonus = g.settings.actionBonusSeconds ?? DEFAULT_ACTION_BONUS_SECONDS;
+  if (!bonus) return;
   const now = Date.now();
   if (!g.deadline || g.deadline <= now) return;
   const fullDeadline = now + g.settings.turnSeconds * 1000;
-  if (g.deadline < fullDeadline) g.deadline = Math.min(g.deadline + ACTION_TIME_BONUS_MS, fullDeadline);
+  if (g.deadline < fullDeadline) g.deadline = Math.min(g.deadline + bonus * 1000, fullDeadline);
 }
 function shuffle(items, random = n => randomInt(n)) { for (let i = items.length - 1; i > 0; i--) { const j = random(i + 1); [items[i], items[j]] = [items[j], items[i]]; } return items; }
 function seededRandom(seed) {

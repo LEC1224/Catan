@@ -11,10 +11,11 @@ import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
 import { boardMap } from '../shared/board-maps.js';
 import { PLAYER_COLORS } from '../shared/player-colors.js';
 import { DEFAULT_TEAM_TARGET, TEAM_IDS, teamSeating } from '../shared/teams.js';
+import { ACTION_BONUS_OPTIONS, DEFAULT_ACTION_BONUS_SECONDS } from '../shared/turn-timer.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const automaticColor = (players) => PLAYER_COLORS.find(({ value }) => !players.some(p => p.color === value)).value;
-export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), mode: 'individual', teamVictoryPoints: DEFAULT_TEAM_TARGET, lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), mode: 'individual', teamVictoryPoints: DEFAULT_TEAM_TARGET, lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, actionBonusSeconds: DEFAULT_ACTION_BONUS_SECONDS, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 function cleanText(value, max, fallback = '') { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) || fallback : fallback; }
 export function validateSettings(input = {}, previous) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid game settings.');
@@ -24,6 +25,10 @@ export function validateSettings(input = {}, previous) {
     const value = input[key];
     if (!Number.isInteger(value) || value < min || value > max || (key === 'turnSeconds' && value > 0 && value < 30)) throw Error(`Invalid ${key} setting.`);
     overrides[key] = value;
+  }
+  if ('actionBonusSeconds' in input) {
+    if (!ACTION_BONUS_OPTIONS.includes(input.actionBonusSeconds)) throw Error('Choose a supported time to add per action.');
+    overrides.actionBonusSeconds = input.actionBonusSeconds;
   }
   for (const key of ['extendedBoard', 'lockDesertToCenter', 'friendlyRobber', 'balancedNumbers', 'unlimitedDevelopmentCards', 'unlimitedResourceCards', 'allowPlayerTrading', 'pairedTurns']) if (key in input) {
     if (typeof input[key] !== 'boolean') throw Error(`Invalid ${key} setting.`);
@@ -71,6 +76,8 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       for (const lobby of data.lobbies || []) {
         if (Date.now() - lobby.updatedAt > 7 * 86400000) continue;
         lobby.settings.unlimitedDevelopmentCards ??= DEFAULT_SETTINGS.unlimitedDevelopmentCards;
+        lobby.settings.actionBonusSeconds ??= DEFAULT_SETTINGS.actionBonusSeconds;
+        if (lobby.game) lobby.game.settings.actionBonusSeconds ??= lobby.settings.actionBonusSeconds;
         for (const player of lobby.players) { player.connected = false; player.disconnectedAt = Date.now(); if (!player.isBot) memberships.set(player.id, lobby.id); }
         if (lobby.status === 'playing' && lobby.game && !hasRecording(lobby.recording)) lobby.recording = beginRecording(lobby.game, true);
         lobbies.set(lobby.id, lobby);

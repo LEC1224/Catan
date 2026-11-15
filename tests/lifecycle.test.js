@@ -93,7 +93,7 @@ test('close flushes the newest match state and a restart restores seats and hidd
     assert.ok(path.basename(tempDirectory).startsWith('catan-lifecycle-'));
     await rm(tempDirectory, { recursive: true, force: true });
   });
-  const { host, guest, id, lobby } = await startTwoPlayerGame(server, clients, { turnSeconds: 0 });
+  const { host, guest, id, lobby } = await startTwoPlayerGame(server, clients, { turnSeconds: 0, actionBonusSeconds: 0 });
   const active = clients.find(socket => socket.playerId === lobby.game.activePlayerId);
   await call(active, 'getDirectory');
   const target = active.lobby.game.legal.settlements[0];
@@ -119,6 +119,7 @@ test('close flushes the newest match state and a restart restores seats and hidd
   assert.equal(resumed.playerId, guest.playerId);
   assert.equal(resumed.lobby.id, id);
   assert.equal(resumed.lobby.game.phase, 'setupRoad');
+  assert.equal(resumed.lobby.settings.actionBonusSeconds, 0, 'a disabled bonus survives a restart');
   assert.equal(resumed.lobby.game.deadline, null, 'unlimited timer remains unlimited across restart');
   for (const player of resumed.lobby.game.players) assert.equal(player.resources === null, player.id !== resumed.playerId);
 });

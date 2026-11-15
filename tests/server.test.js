@@ -23,6 +23,9 @@ test('new lobby settings default to the preset for the selected player limit', (
 test('settings reject invalid values', () => {
   assert.throws(() => validateSettings({ maxPlayers: 7 }));
   assert.throws(() => validateSettings({ turnSeconds: 5 }));
+  for (const actionBonusSeconds of [-5, 12, 60, '10']) {
+    assert.throws(() => validateSettings({ actionBonusSeconds }), /time to add per action/);
+  }
   assert.throws(() => validateSettings({ discardThreshold: '12' }));
   assert.throws(() => validateSettings({ extendedBoard: 'false' }));
   assert.throws(() => validateSettings({ lockDesertToCenter: 'true' }));

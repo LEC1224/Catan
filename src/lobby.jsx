@@ -7,6 +7,7 @@ import { DEFAULT_PLAYER_COUNT, lobbyPreset } from "../shared/lobby-presets.js";
 import { BOARD_MAPS, boardMap } from "../shared/board-maps.js";
 import { PLAYER_COLORS } from "../shared/player-colors.js";
 import { DEFAULT_TEAM_TARGET, TEAM_IDS, TEAM_MIN_POINTS, teamName } from "../shared/teams.js";
+import { ACTION_BONUS_OPTIONS, DEFAULT_ACTION_BONUS_SECONDS } from "../shared/turn-timer.js";
 import { Chat } from "./chat.jsx";
 import "./lobby.css";
 
@@ -330,6 +331,7 @@ function SettingsPanel({ lobby, host, busy, command }) {
   const settings = lobby.settings;
   const teams = settings.mode === "teams";
   const disabled = !host || !!busy;
+  const timerOn = settings.turnSeconds > 0;
   const change = (key, value) => command("configureLobby", {
     settings: { [key]: value },
   });
@@ -382,6 +384,10 @@ function SettingsPanel({ lobby, host, busy, command }) {
           <SettingsSelect label="Turn timer" value={settings.turnSeconds} options={TIMER_OPTIONS}
             format={(seconds) => seconds === 0 ? "Off" : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`}
             disabled={disabled} onChange={(value) => change("turnSeconds", value)} />
+          <SettingsSelect label="Time added per action" value={timerOn ? (settings.actionBonusSeconds ?? DEFAULT_ACTION_BONUS_SECONDS) : 0} options={ACTION_BONUS_OPTIONS}
+            format={(seconds) => seconds === 0 ? "Off" : `+${seconds} seconds`}
+            help={timerOn ? "For builds, completed trades and development cards, up to the turn timer." : undefined}
+            disabled={disabled || !timerOn} onChange={(value) => change("actionBonusSeconds", value)} />
           <SettingsSelect label="Discard threshold" value={settings.discardThreshold} options={Array.from({ length: 28 }, (_, i) => i + 3)} disabled={disabled} onChange={(value) => change("discardThreshold", value)} />
         </div>
         <details className="front-advanced">

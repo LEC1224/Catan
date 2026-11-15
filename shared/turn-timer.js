@@ -1,0 +1,2 @@
+export const DEFAULT_ACTION_BONUS_SECONDS = 10;
+export const ACTION_BONUS_OPTIONS = Object.freeze([0, 5, DEFAULT_ACTION_BONUS_SECONDS, 15, 20, 30]);

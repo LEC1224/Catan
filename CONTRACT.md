@@ -41,6 +41,8 @@ All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser 
 
 `lockDesertToCenter` defaults to false. When true, the center (left middle hex on Expanded) is reserved for the starting desert and robber. Expanded's other desert is shuffled with the remaining terrain.
 
+`actionBonusSeconds` sets the time added per qualifying move. It accepts 0 (off), 5, 10, 15, 20, or 30. New and older saved lobbies or matches without the field default to 10. The setting is retained when `turnSeconds` is 0, but has no effect without a running clock.
+
 `unlimitedDevelopmentCards` defaults to true for new matches. Buying from an empty deck shuffles a fresh deck with the same card mix and new IDs. Saved matches without the setting retain a finite deck.
 
 `unlimitedResourceCards` defaults to false. When true, the bank fulfills all eligible production and resource requests. Build costs, trade rates, and hand rules still apply.
@@ -62,7 +64,7 @@ Finished lobby snapshots include `summary: {turns,pairedTurns,frameCount,history
 `phase`: setupSettlement | setupRoad | roll | action | discard | robber | steal | finished.
 `activePlayerId`, `turn`, `deadline` ms|null, `winnerId`, `dice` [int,int]|null, `robberHexId`, `longestRoadHolder`, `largestArmyHolder`, `log` [{text,at,seq,cue?}], `settings`, `pairedPlayer` boolean.
 
-`deadline` is an absolute server timestamp. A build, completed trade, or development card move in the same roll or action phase adds 10 seconds to a running clock, up to `turnSeconds` remaining. A player trade earns time when the resources change hands. New phases and turns start a fresh clock; disabled, expired, and finished clocks don't receive bonuses.
+`deadline` is an absolute server timestamp. A build, completed trade, or development card move in the same roll or action phase adds `actionBonusSeconds` to a running clock, up to `turnSeconds` remaining. A player trade earns time when the resources change hands. New phases and turns start a fresh clock; disabled, expired, and finished clocks don't receive bonuses.
 
 Log entries have increasing `seq` values within the match even when the oldest entries are trimmed. Some public actions carry a `cue` for sound effects. Saved entries from older versions may omit both fields.
 `board`: `{hexes:[{id,x,y,terrain,number,vertexIds,edgeIds}],vertices:[{id,x,y,hexIds,edgeIds,neighborIds,building:null|{owner,type:'settlement'|'city'},port:null|'any'|'wood'|'brick'|'wool'|'wheat'|'ore'}],edges:[{id,a,b,owner:null|string}]}`. Hex radius 60, pointy top; x/y any values (UI calculates bounding box). Terrain values wood,brick,wool,wheat,ore,desert.

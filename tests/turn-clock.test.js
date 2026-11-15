@@ -4,8 +4,8 @@ import { action, createGame, tick, viewGame } from '../server/game.js';
 import { createAppServer } from '../server/index.js';
 import { call, connect } from './helpers/socket-client.js';
 
-function actionPhase(turnSeconds = 30) {
-  const game = createGame([{ id: 'a', name: 'Alice' }, { id: 'b', name: 'Bob' }], { seed: 'turn-clock', turnSeconds });
+function actionPhase(settings = {}) {
+  const game = createGame([{ id: 'a', name: 'Alice' }, { id: 'b', name: 'Bob' }], { seed: 'turn-clock', turnSeconds: 30, ...settings });
   game.phase = 'action';
   game.turn = 1;
   game.board.vertices[0].building = { owner: 'a', type: 'settlement' };
@@ -68,7 +68,7 @@ test('a successful build does not start a disabled clock or revive an expired on
   let now = Date.now();
   t.mock.method(Date, 'now', () => now);
   for (const turnSeconds of [0, 30]) {
-    const game = actionPhase(turnSeconds), deadline = game.deadline;
+    const game = actionPhase({ turnSeconds }), deadline = game.deadline;
     giveResources(game, 'a', { wood: 1, brick: 1 });
     if (deadline !== null) now = deadline;
 
@@ -77,7 +77,21 @@ test('a successful build does not start a disabled clock or revive an expired on
   }
 });
 
-test('both players see the active turn gain time when a player trade completes', async t => {
+test('a zero bonus leaves a running clock unchanged; an older match keeps the default bonus', t => {
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  const game = actionPhase({ actionBonusSeconds: 0 }), deadline = game.deadline;
+  giveResources(game, 'a', { wood: 2, brick: 2 });
+  now += 15_000;
+
+  buildRoad(game);
+  assert.equal(game.deadline, deadline);
+  delete game.settings.actionBonusSeconds;
+  buildRoad(game);
+  assert.equal(game.deadline, deadline + 10_000);
+});
+
+test('both players see the host’s configured time bonus when a player trade completes', async t => {
   const server = await createAppServer({ port: 0, testMode: true, persistence: false });
   const clients = [];
   t.after(async () => { clients.forEach(client => client.disconnect()); await server.close(); });
@@ -86,7 +100,13 @@ test('both players see the active turn gain time when a player trade completes',
   const [host, guest] = clients;
   const { ok, id } = await call(host, 'createLobby', { playerName: 'Ada', settings: { turnSeconds: 30 } });
   assert.equal(ok, true);
+  assert.equal(host.lobby.settings.actionBonusSeconds, 10);
   assert.equal((await call(guest, 'joinLobby', { id, playerName: 'Birch' })).ok, true);
+  const update = { settings: { actionBonusSeconds: 5 } };
+  assert.equal((await call(guest, 'configureLobby', update)).ok, false);
+  assert.equal((await call(host, 'configureLobby', update)).ok, true);
+  await call(guest, 'getDirectory');
+  assert.equal(guest.lobby.settings.actionBonusSeconds, 5);
   assert.equal((await call(guest, 'setReady', { ready: true })).ok, true);
   assert.equal((await call(host, 'startGame')).ok, true);
 
@@ -122,7 +142,7 @@ test('both players see the active turn gain time when a player trade completes',
   await call(recipient, 'getDirectory');
   for (const client of clients) {
     assert.equal(client.lobby.game.activePlayerId, sender.playerId);
-    assert.equal(client.lobby.game.deadline, originalDeadline + 10_000);
+    assert.equal(client.lobby.game.deadline, originalDeadline + 5000);
   }
   assert.equal(sender.lobby.game.players.find(p => p.id === sender.playerId).resources.ore, 1);
   assert.equal(recipient.lobby.game.players.find(p => p.id === recipient.playerId).resources.wood, 1);
