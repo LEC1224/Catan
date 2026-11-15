@@ -170,11 +170,13 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
             onClick={selectable ? choose : undefined} onKeyDown={selectable ? (event) => activateOnKey(event, choose) : undefined}>
             {hint && !selectable && <title>{hint}</title>}
             <polygon points={polygon} fill={terrain.color} />
-            <g clipPath={`url(#${ids}-${h.id})`}><TerrainImage h={h} terrain={terrain} variant={variants[h.id] || 0} /></g>
-            <polygon points={polygon} fill="none" stroke="#e0cda1" strokeOpacity=".7" strokeWidth="1.65" pointerEvents="none" />
+            <g data-deal-tile-art={h.id} style={{ transformOrigin: `${h.x}px ${h.y}px` }} pointerEvents="none">
+              <g clipPath={`url(#${ids}-${h.id})`}><TerrainImage h={h} terrain={terrain} variant={variants[h.id] || 0} /></g>
+              <polygon points={polygon} fill="none" stroke="#e0cda1" strokeOpacity=".7" strokeWidth="1.65" />
+              <RobberHexMark state={state} points={polygon} x={h.x} y={h.y} />
+              {h.number && <NumberToken hex={h} blocked={blocked} />}
+            </g>
             <polygon points={polygon} className="deal-tile-cue" data-deal-tile={h.id} aria-hidden="true" />
-            <RobberHexMark state={state} points={polygon} x={h.x} y={h.y} />
-            {h.number && <NumberToken hex={h} blocked={blocked} />}
             {blocked && (
               <g transform={`translate(${h.x + (h.number ? 24 : 0)},${h.y - (h.number ? 17 : 3)})`} pointerEvents="none">
                 <ellipse cy="16" rx="13" ry="5" fill="#092522" opacity=".5" />

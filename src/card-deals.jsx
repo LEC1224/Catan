@@ -4,6 +4,7 @@ import "./card-deals.css";
 const reducedMotion = "(prefers-reduced-motion: reduce)";
 const maxCardsPerMove = 5;
 const miniWidth = 13;
+const tileCueDuration = 390;
 const emptyMap = new Map();
 const emptyQueue = { flights: [], pending: emptyMap, landings: emptyMap };
 export const PendingCardArrivals = createContext(emptyMap);
@@ -187,14 +188,14 @@ class OutgoingCardPositions extends React.Component {
 
 function FlyingCard({ flight, scope, meId, face, Face, done, positions }) {
   const element = useRef(null), turner = useRef(null);
-  const { move, delay, arrivals, count, cue } = flight;
+  const { move, delay, arrivals, count, cue, pop } = flight;
   const outgoing = belongsTo(move.from, meId), incoming = belongsTo(move.to, meId);
   const reveal = face && incoming && (move.from.kind === "player" || move.kind === "development");
   const cover = face && move.to.kind === "player" && !incoming;
 
   useLayoutEffect(() => {
     const root = scope.current, node = element.current;
-    let motion, turn, outline, cancelled = false;
+    let motion, turn, outline, tilePop, cancelled = false;
     const finish = (touchdown) => {
       // The overlay holds its last frame until React puts the card into the hand.
       if (!cancelled) done(flight, touchdown);
@@ -205,7 +206,17 @@ function FlyingCard({ flight, scope, meId, face, Face, done, positions }) {
           || point(root.querySelector(".match-drawer-button"));
       const from = positions.current.get(flight) || endpoint(move.from, outgoing);
       const to = endpoint(move.to, incoming, arrivals[0] || move.cardId);
-      if (!from || !to || !node?.animate) return finish();
+      if (cue && pop) tilePop = find(root, "tile-art", move.from.id)?.animate?.([
+        { transform: "scale(1)", easing: "ease-out" },
+        { transform: "scale(1.05)", offset: .28, easing: "ease-in-out" },
+        { transform: "scale(1)" },
+      ], { duration: tileCueDuration });
+      if (!from || !to || !node?.animate) {
+        // The tile can still pop when the card has no visible landing point.
+        if (tilePop) tilePop.finished.then(() => finish(), () => {});
+        else finish();
+        return;
+      }
       const width = (incoming ? to.width : outgoing ? from.width : null) || 72;
       const height = (incoming ? to.height : outgoing ? from.height : null) || width * 1.34;
       node.style.width = `${width}px`;
@@ -214,7 +225,7 @@ function FlyingCard({ flight, scope, meId, face, Face, done, positions }) {
       motion = node.animate(frames, { duration, fill: "both", easing });
       if (cue) outline = find(root, "tile", move.from.id)?.animate([
         { opacity: 0 }, { opacity: .95, offset: .2 }, { opacity: .95, offset: .58 }, { opacity: 0 },
-      ], { duration: 390 });
+      ], { duration: tileCueDuration });
       if (reveal || cover) {
         const front = "rotateY(0deg)", back = "rotateY(180deg)";
         turn = turner.current.animate(reveal
@@ -224,8 +235,8 @@ function FlyingCard({ flight, scope, meId, face, Face, done, positions }) {
       }
       motion.finished.then(() => finish(incoming ? to : undefined), () => {});
     }, delay);
-    return () => { cancelled = true; clearTimeout(timer); motion?.cancel(); turn?.cancel(); outline?.cancel(); };
-  }, [scope, flight, move, delay, arrivals, cue, incoming, outgoing, reveal, cover, done, positions]);
+    return () => { cancelled = true; clearTimeout(timer); motion?.cancel(); turn?.cancel(); outline?.cancel(); tilePop?.cancel(); };
+  }, [scope, flight, move, delay, arrivals, cue, pop, incoming, outgoing, reveal, cover, done, positions]);
 
   return <span className="deal-flying-card" ref={element}>
     {face ? <span className="deal-card-turner" ref={turner}>
