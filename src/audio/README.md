@@ -17,4 +17,6 @@ The clips in `tabletop.mp3` are mixed from these [CC0 1.0](https://creativecommo
 
 The recordings were trimmed, filtered, level matched, and mixed. Some were layered or played slightly faster or slower. The app serves the pack locally and decodes it once for playback.
 
-`tabletop.json` indexes each clip as `[offset, duration]` in seconds. When replacing a clip, update both files together and leave a short silent gap between clips. Dice rolls, roads, and settlements alternate between recordings in `../sound-player.js`.
+`tabletop.json` indexes each clip as `[offset, duration]` in seconds. When replacing a clip, update both files together and leave a short silent gap between clips. Dice rolls alternate between recordings in `../sound-player.js`.
+
+`../build-sound.js` generates the road, settlement, and city impacts in the browser. Each has a short grit tail and a damped thud, with a lower, longer hit for larger pieces. Roads and settlements each use two variations.

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { Anchor, Minus, Plus, RotateCcw } from "lucide-react";
 import { boardScenery, HOME_CAMERA, moveCamera, productionPips, terrainVariants } from "./board-layout.js";
 import { BuildingApron, RoadGravel, RoadNetwork, RoadPreview } from "./board-roads.jsx";
+import { BuildDust, SETTLEMENT_CONTACT_MS, SETTLEMENT_LANDING_MS, settlementContactDelay } from "./build-effects.jsx";
 import { BuildPreview, CityUpgradePreview } from "./build-preview.jsx";
 import { RobberHexMark } from "./robber-guide.jsx";
 import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
@@ -9,7 +10,6 @@ import { robberPlacement, ROBBER_TILE_HINTS } from "./robber-placements.js";
 const DIMENSIONS = { x: 400, y: 280, width: 800, height: 560, fullWidth: 800, fullHeight: 560 };
 const OCEAN_TILE_WIDTH = 1536, OCEAN_TILE_HEIGHT = 1024;
 const OCEAN_BLEED = 8; // World units beyond the viewport for the animated drift.
-const SETTLEMENT_LANDING_MS = 500;
 const ROOFS = {
   settlement: "M145 390 244 262 266 242 272 246 375 206 456 155 485 156 588 349 575 378 367 466 269 294 168 413 145 418Z",
   city: "M849 219 883 194 910 155 928 179 965 207 961 235 895 246Z M839 315 1015 258 1065 256 1098 321 1075 347 950 381Z M1209 200 1249 185 1280 228 1255 255 1221 245Z M1183 323 1242 268 1290 262 1346 304 1312 356 1211 348Z M1115 405 1169 341 1234 357 1270 406 1223 442 1151 441Z M1284 402 1353 365 1383 391 1362 425 1327 431Z M784 425 825 381 932 409 957 437 930 453 875 469Z M986 459 1018 406 1149 405 1165 448 1147 479 1012 475Z M901 528 929 486 998 516 978 551Z M1193 522 1243 472 1303 460 1327 495 1254 540Z",
@@ -54,15 +54,17 @@ function Building({ type, filter, clip, outline, gravel, x, y }) {
   );
 }
 
-function useSettlementLandings(vertices, meId) {
+function useSettlementLandings(vertices, meId, stream) {
   const settlements = useMemo(() => new Set(vertices
     .filter((v) => v.building?.type === "settlement" && v.building.owner === meId)
     .map((v) => v.id)), [vertices, meId]);
-  const [state, setState] = useState(() => ({ settlements, landing: new Set() }));
-  if (state.settlements !== settlements) {
+  const [state, setState] = useState(() => ({ stream, settlements, landing: new Set() }));
+  if (state.settlements !== settlements || state.stream !== stream) {
     // Update before committing the snapshot so new road targets never appear early.
-    const landing = new Set([...settlements].filter((id) => state.landing.has(id) || !state.settlements.has(id)));
-    setState({ settlements, landing });
+    const landing = state.stream === stream && stream != null
+      ? new Set([...settlements].filter((id) => state.landing.has(id) || !state.settlements.has(id)))
+      : new Set();
+    setState({ stream, settlements, landing });
   }
   const finish = useCallback((id) => setState((current) => {
     const landing = new Set(current.landing);
@@ -77,14 +79,14 @@ function PlacedBuilding({ vertexId, landing, onLanded, children }) {
   useLayoutEffect(() => {
     if (!landing) return;
     const node = piece.current;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !node.animate) {
+    if (!settlementContactDelay()) {
       // Keep the double-click guard even when the piece appears without motion.
       const timer = setTimeout(() => onLanded(vertexId), SETTLEMENT_LANDING_MS);
       return () => clearTimeout(timer);
     }
     const motion = node.animate([
       { transform: "translateY(-18px)", opacity: .65, easing: "ease-in" },
-      { transform: "translateY(1px)", opacity: 1, offset: .76, easing: "ease-out" },
+      { transform: "translateY(1px)", opacity: 1, offset: SETTLEMENT_CONTACT_MS / SETTLEMENT_LANDING_MS, easing: "ease-out" },
       { transform: "translateY(0)", opacity: 1 },
     ], { duration: SETTLEMENT_LANDING_MS });
     let mounted = true;
@@ -174,7 +176,7 @@ function TerrainImage({ h, terrain, variant }) {
   );
 }
 
-function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, scenery, variants }) {
+function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resourceMeta, scenery, variants }) {
   const ids = useId();
   const outline = `${ids}-piece-outline`;
   const gravel = `${ids}-road-gravel`;
@@ -189,7 +191,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
   const settlements = new Set(isActive && (game.phase === "setupSettlement" || mode === "settlement" || previewSettlements) ? legal.settlements : []);
   const roads = new Set(isActive && (game.phase === "setupRoad" || game.roadBuildingRemaining || mode === "road" || previewRoads) ? legal.roads : []);
   const cities = new Set(isActive && (mode === "city" || previewCities) ? legal.cities : []);
-  const [landing, finishLanding] = useSettlementLandings(game.board.vertices, meId);
+  const [landing, finishLanding] = useSettlementLandings(game.board.vertices, meId, stream);
   const robber = robberPlacement(game, meId);
   return (
     <>
@@ -308,6 +310,7 @@ function BoardScene({ game, meId, mode, canBuild, busy, onAction, resourceMeta, 
           </g>
         );
       })}
+      {stream != null && <BuildDust board={game.board} vertices={vertices} stream={stream} meId={meId} />}
     </>
   );
 }
@@ -451,7 +454,7 @@ function BoardCamera({ bounds, seed, children }) {
   );
 }
 
-export function Board({ game, matchId, meId, mode, canBuild, busy, onAction, resourceMeta }) {
+export function Board({ game, matchId, stream, meId, mode, canBuild, busy, onAction, resourceMeta }) {
   // Socket observations and replay seeks replace board objects, but terrain, ports and
   // coordinates stay fixed throughout a match. Legacy views without an ID use identity.
   const geometryKey = matchId || game.board;
@@ -460,7 +463,7 @@ export function Board({ game, matchId, meId, mode, canBuild, busy, onAction, res
   const variants = useMemo(() => terrainVariants(game.board.hexes, artSeed), [geometryKey, artSeed]);
   return (
     <BoardCamera bounds={scenery.bounds} seed={game.settings.seed}>
-      <BoardScene game={game} meId={meId} mode={mode} canBuild={canBuild} busy={busy}
+      <BoardScene game={game} stream={stream} meId={meId} mode={mode} canBuild={canBuild} busy={busy}
         onAction={onAction} resourceMeta={resourceMeta} scenery={scenery} variants={variants} />
     </BoardCamera>
   );

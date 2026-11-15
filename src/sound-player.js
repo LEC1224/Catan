@@ -1,5 +1,6 @@
 import soundUrl from "./audio/tabletop.mp3";
 import clips from "./audio/tabletop.json";
+import { createBuildImpact } from "./build-sound.js";
 
 const VARIANTS = {
   dice: ["dice-1", "dice-2", "dice-3"],
@@ -8,6 +9,7 @@ const VARIANTS = {
 };
 const MIN_INTERVAL = { chat: 0.7, offer: 0.6, ready: 0.28 };
 const REPLACE_PREVIOUS = new Set(["start", "discardWarning", "won", "finished"]);
+const BUILD_CUES = new Set(["road", "settlement", "city"]);
 
 export function createSoundPlayer(initiallyEnabled) {
   let enabled = initiallyEnabled;
@@ -16,6 +18,7 @@ export function createSoundPlayer(initiallyEnabled) {
   const sources = new Set();
   const lastPlayed = new Map();
   const lastVariant = new Map();
+  const buildImpacts = new Map();
 
   function preload() {
     if (!enabled || download) return;
@@ -62,20 +65,25 @@ export function createSoundPlayer(initiallyEnabled) {
   }
 
   function play(...cues) {
+    playAfter(0, ...cues);
+  }
+
+  function playAfter(delayMs, ...cues) {
     if (!cues.length || !enabled || !context || document.hidden) return;
     if (!buffer || context.state !== "running") {
       if (!decoding && !resuming) return;
       const requested = performance.now(), current = generation;
       void Promise.all([decoding, resuming]).then(() => {
-        if (generation === current && buffer && context?.state === "running" && performance.now() - requested < 650) {
-          play(...cues);
+        const elapsed = performance.now() - requested;
+        if (generation === current && buffer && context?.state === "running" && elapsed < 650) {
+          playAfter(Math.max(0, delayMs - elapsed), ...cues);
         }
       });
       return;
     }
 
     if (cues.some((cue) => REPLACE_PREVIOUS.has(cue))) stop();
-    let at = context.currentTime + 0.008;
+    let at = context.currentTime + 0.008 + delayMs / 1000;
     for (const cue of cues) {
       if (at - (lastPlayed.get(cue) ?? -Infinity) < (MIN_INTERVAL[cue] ?? 0.085)) continue;
       let name = cue;
@@ -84,10 +92,12 @@ export function createSoundPlayer(initiallyEnabled) {
         name = available[Math.floor(Math.random() * available.length)];
         lastVariant.set(cue, name);
       }
-      if (!Object.hasOwn(clips, name)) continue;
-      const [offset, duration] = clips[name];
+      if (BUILD_CUES.has(cue) && !buildImpacts.has(name)) buildImpacts.set(name, createBuildImpact(context, name));
+      const impact = buildImpacts.get(name);
+      if (!impact && !Object.hasOwn(clips, name)) continue;
+      const [offset, duration] = impact ? [0, impact.duration] : clips[name];
       const source = context.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = impact || buffer;
       source.connect(output);
       sources.add(source);
       source.onended = () => {
@@ -116,9 +126,10 @@ export function createSoundPlayer(initiallyEnabled) {
 
   function dispose() {
     stop();
+    buildImpacts.clear();
     if (context && context.state !== "closed") void context.close().catch(() => {});
     context = output = decoding = buffer = resuming = null;
   }
 
-  return { preload, unlock, play, stop, setEnabled, dispose };
+  return { preload, unlock, play, playAfter, stop, setEnabled, dispose };
 }

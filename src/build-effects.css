@@ -1,0 +1,15 @@
+.build-dust-cloud {
+  opacity: 0;
+  animation: build-dust var(--dust-time) cubic-bezier(.17, .47, .32, 1) var(--dust-delay) both;
+}
+
+@keyframes build-dust {
+  0% { opacity: 0; transform: translateY(2px) scale(.34); }
+  16% { opacity: .94; }
+  52% { opacity: .69; }
+  100% { opacity: 0; transform: translate(var(--dust-x), var(--dust-y)) scale(1.68); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-dust-layer { display: none; }
+}

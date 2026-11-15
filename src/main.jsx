@@ -52,6 +52,7 @@ import { HomeScreen, LobbyHeader, WaitingRoom } from "./lobby.jsx";
 import { Chat } from "./chat.jsx";
 import { SoundToggle, useDecisionWarning, useSoundEffects } from "./sound.jsx";
 import { lobbySoundCues } from "./sound-cues.js";
+import { settlementContactDelay } from "./build-effects.jsx";
 import { CardFace, MatchHands } from "./match-hand.jsx";
 import { Board } from "./match-board.jsx";
 import { DICE_THROW_DURATION, MatchDice, TurnClock } from "./match-hud.jsx";
@@ -124,7 +125,7 @@ function App() {
   const { enabled: soundEnabled, toggle: toggleSound, player: sound } = useSoundEffects();
   useDecisionWarning(connected ? lobby?.game : null, lobby?.meId, sound);
   const joinedLobbyId = useRef(null);
-  const cardDealStream = useRef(0);
+  const snapshotStream = useRef(0);
   const shell = useRef(null);
   const inMatch = !!lobby?.game;
   const canAbandon = inMatch && lobby.status === "playing" && lobby.game.phase !== "finished" && lobby.hostId === (meId || lobby.meId);
@@ -153,7 +154,7 @@ function App() {
     catch { setError("Local bots require Web Workers. Try reloading in a current browser."); }
     setSocket(s);
     s.on("connect", () => {
-      cardDealStream.current++;
+      snapshotStream.current++;
       setConnected(true);
       s.emit("getDirectory", {});
     });
@@ -171,6 +172,7 @@ function App() {
     s.on("directory", setDirectory);
     s.on("lobby", (l) => {
       const cues = lobbySoundCues(lastLobby, l);
+      const contactDelay = cues[0] === "settlement" && lastLobby.game.activePlayerId === l.meId ? settlementContactDelay() : 0;
       lastLobby = l;
       if (l?.meId) setMeId(l.meId);
       const nextId = l?.id || null;
@@ -178,8 +180,8 @@ function App() {
         history.replaceState({}, "", nextId ? `?lobby=${nextId}` : "/");
         joinedLobbyId.current = nextId;
       }
-      setLobby(l && { ...l, cardDealStream: cardDealStream.current });
-      sound.play(...cues);
+      setLobby(l && { ...l, snapshotStream: snapshotStream.current });
+      sound.playAfter(contactDelay, ...cues);
     });
     s.on("chatMessage", (message) => {
       if (lastLobby) sound.play("chat");
@@ -410,7 +412,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
   useLayoutEffect(() => {
     if (chatFocus) matchPage.current?.querySelector(".chat-input input")?.focus({ preventScroll: true });
   }, [chatFocus]);
-  const deals = useCardDeals({ matchId: lobby.matchId || lobby.id, stream: lobby.cardDealStream,
+  const deals = useCardDeals({ matchId: lobby.matchId || lobby.id, stream: lobby.snapshotStream,
     game, me: game.phase === "finished" ? null : me, rollDelay: DICE_THROW_DURATION });
   useEffect(() => {
     const media = matchMedia("(max-width: 950px)");
@@ -644,7 +646,7 @@ function Game({ lobby, meId, command, busy, onHelp, onAbandon, onCopyInvite, onL
           </div>
         </aside>
         <section className="board-section" aria-label="Play area">
-          <Board key={lobby.matchId || lobby.id} game={game} matchId={lobby.matchId} meId={meId} mode={selectedBuild}
+          <Board key={lobby.matchId || lobby.id} game={game} matchId={lobby.matchId} stream={lobby.snapshotStream} meId={meId} mode={selectedBuild}
             canBuild={dev ? {} : canBuild} busy={!!busy} onAction={action} resourceMeta={META} />
         </section>
         <div className="match-side-rail">
