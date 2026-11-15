@@ -22,18 +22,29 @@ function activateOnKey(event, action) {
   }
 }
 
+function colorChannels(color) {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.slice(1).match(/../g).map(channel => parseInt(channel, 16)) : null;
+}
+
 function roofMatrix(color) {
-  const rgb = (color?.match(/^#[0-9a-f]{6}$/i) ? color : "#b77d56").slice(1).match(/../g);
+  const rgb = colorChannels(color) ?? [183, 125, 86];
   // Keep the roof texture while centering its shading on the player's color.
-  return rgb.map((channel) => `.19 .60 .07 0 ${(parseInt(channel, 16) / 255 - .35).toFixed(3)}`).join(" ") +
+  return rgb.map((channel) => `.19 .60 .07 0 ${(channel / 255 - .35).toFixed(3)}`).join(" ") +
     " 4.4 -4.2 0 0 -.25";
 }
 
-function PieceOutline({ id, withArt }) {
+function outlineTint(color) {
+  const rgb = colorChannels(color);
+  if (!rgb) return undefined;
+  const parchment = [250, 243, 227];
+  return `rgb(${parchment.map((base, i) => Math.round(base * .64 + rgb[i] * .36)).join(", ")})`;
+}
+
+function PieceOutline({ id, withArt, tint = "#f8e3b8" }) {
   return (
     <filter id={id} x="-20%" y="-20%" width="140%" height="150%" colorInterpolationFilters="sRGB">
       <feMorphology in="SourceAlpha" operator="dilate" radius="1.55" result="rimMask" />
-      <feFlood floodColor="#f8e3b8" floodOpacity=".94" result="rimPaint" />
+      <feFlood floodColor={tint} floodOpacity=".94" result="rimPaint" />
       <feComposite in="rimPaint" in2="rimMask" operator="in" result="rim" />
       {withArt && <feMerge result="outlined"><feMergeNode in="rim" /><feMergeNode in="SourceGraphic" /></feMerge>}
       <feDropShadow in={withArt ? "outlined" : "rim"} dx="0" dy="1.8" stdDeviation="1.1" floodColor="#101b17" floodOpacity=".95" />
@@ -206,12 +217,17 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
   const { polygons, shore, ports } = scenery;
   const { hexes, edges, vertices: boardVertices } = game.board;
   const vertices = useMemo(() => Object.fromEntries(boardVertices.map(v => [v.id, v])), [boardVertices]);
-  const colors = Object.fromEntries(game.players.map((p, i) => [p.id, { color: p.color, filter: `${ids}-roof-${i}` }]));
+  const colors = Object.fromEntries(game.players.map((p, i) => [p.id, {
+    color: p.color, filter: `${ids}-roof-${i}`, outline: `${outline}-${i}`, rim: `${rim}-${i}`,
+  }]));
   const { routes, approaches } = roadLayout(edges, vertices);
-  const renderPiece = (kind, owner, v) => (
-    <Building type={kind} filter={colors[owner]?.filter} clip={`${ids}-shape-${kind}`} outline={outline} rim={rim}
-      gravel={gravel} approach={approaches.get(v.id)?.get(owner)?.join(" ")} x={v.x} y={v.y} />
-  );
+  const renderPiece = (kind, owner, v) => {
+    const player = colors[owner];
+    return (
+      <Building type={kind} filter={player?.filter} clip={`${ids}-shape-${kind}`} outline={player?.outline ?? outline}
+        rim={player?.rim ?? rim} gravel={gravel} approach={approaches.get(v.id)?.get(owner)?.join(" ")} x={v.x} y={v.y} />
+    );
+  };
   const isActive = game.activePlayerId === meId, legal = game.legal || {};
   const previewBuilds = !mode && !busy;
   const previewRoads = previewBuilds && canBuild.road;
@@ -238,12 +254,19 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
         </pattern>
         {hexes.map((h) => <clipPath key={h.id} id={`${ids}-${h.id}`}><polygon points={polygons[h.id]} /></clipPath>)}
         {Object.entries(ROOFS).map(([type, d]) => <clipPath key={type} id={`${ids}-shape-${type}`}><path d={d} /></clipPath>)}
-        {Object.values(colors).map(({ filter, color }) => (
-          <filter key={filter} id={filter} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
-            <feColorMatrix type="matrix" values={roofMatrix(color)} result="tinted" />
-            <feComposite in="tinted" in2="SourceAlpha" operator="in" />
-          </filter>
-        ))}
+        {Object.values(colors).map(p => {
+          const tint = outlineTint(p.color);
+          return (
+            <React.Fragment key={p.filter}>
+              <filter id={p.filter} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
+                <feColorMatrix type="matrix" values={roofMatrix(p.color)} result="tinted" />
+                <feComposite in="tinted" in2="SourceAlpha" operator="in" />
+              </filter>
+              <PieceOutline id={p.outline} tint={tint} withArt />
+              <PieceOutline id={p.rim} tint={tint} />
+            </React.Fragment>
+          );
+        })}
       </defs>
       <Coast shore={shore} ids={ids} />
       {hexes.map((h) => {
