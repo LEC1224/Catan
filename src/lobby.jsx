@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from "../shared/lobby-presets.js";
 import { BOARD_MAPS, boardMap } from "../shared/board-maps.js";
+import { PLAYER_COLORS } from "../shared/player-colors.js";
 import { DEFAULT_TEAM_TARGET, TEAM_IDS, TEAM_MIN_POINTS, teamName } from "../shared/teams.js";
 import { Chat } from "./chat.jsx";
 import "./lobby.css";
@@ -457,7 +458,48 @@ function RosterSlot({ player, index, meId, hostId, host, busy, command, teams })
   );
 }
 
-export function WaitingRoom({ lobby, meId, botSupport, command, copyInvite, busy }) {
+function PlayerColorPicker({ player, players, disabled, command }) {
+  const [open, setOpen] = useState(false);
+  const gridId = useId(), trigger = useRef(null);
+  const taken = new Map(players.filter((p) => p.id !== player.id).map((p) => [p.color, p.name]));
+  const currentName = PLAYER_COLORS.find(({ value }) => value === player.color)?.name;
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  return (
+    <div className="roster-color" onKeyDown={(event) => {
+      if (open && event.key === "Escape") close();
+    }}>
+      <button type="button" ref={trigger} className="front-button roster-color-toggle" aria-expanded={open}
+        aria-controls={open ? gridId : undefined} onClick={() => setOpen(!open)}>
+        Your color
+        <span className="roster-color-current">
+          <span className="roster-color-chip" style={{ "--swatch": player.color }} aria-hidden="true" />
+          {currentName}
+        </span>
+        <ChevronDown size={15} aria-hidden="true" />
+      </button>
+      {open && (
+        <div id={gridId} className="roster-color-grid" role="group" aria-label="Player colors">
+          {PLAYER_COLORS.map(({ name, value }) => {
+            const owner = taken.get(value), selected = player.color === value;
+            const label = owner ? `${name}, taken by ${owner}` : name;
+            return (
+              <button type="button" key={value} className="roster-color-swatch" style={{ "--swatch": value }}
+                aria-label={label} title={label} aria-pressed={selected} disabled={!!owner} aria-disabled={disabled || undefined}
+                onClick={async () => { if (!disabled && (selected || await command("setPlayerColor", { color: value }))) close(); }}>
+                {selected ? <Check size={16} aria-hidden="true" /> : owner && <LockKeyhole size={13} aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WaitingRoom({ lobby, meId, connected, botSupport, command, copyInvite, busy }) {
   const host = meId === lobby.hostId;
   const hasBotSlot = host && lobby.players.length < lobby.settings.maxPlayers;
   const me = lobby.players.find((player) => player.id === meId);
@@ -482,6 +524,7 @@ export function WaitingRoom({ lobby, meId, botSupport, command, copyInvite, busy
               <RosterSlot key={lobby.players[index]?.id || index} player={lobby.players[index]} index={index} meId={meId} hostId={lobby.hostId} host={host} busy={busy} command={command} teams={teams} />
             ))}
           </ol>
+          {me && <PlayerColorPicker player={me} players={lobby.players} disabled={!connected || !!busy} command={command} />}
           {hasBotSlot && botSupport === false && <p className="roster-note" role="status">The game server needs an update to add bots.</p>}
           {lobby.players.some((player) => player.isBot) && <p className="roster-note">Bots run in the host’s browser. Keep it open during the game.</p>}
           <div className="roster-command">

@@ -9,10 +9,11 @@ import { createGame, nextGame, viewGame, needsTick, tick } from './game.js';
 import { appendFrame, beginRecording, captureMove, hasRecording, lastLogSequence, matchSummary, viewReplay } from './match-recording.js';
 import { DEFAULT_PLAYER_COUNT, lobbyPreset } from '../shared/lobby-presets.js';
 import { boardMap } from '../shared/board-maps.js';
+import { PLAYER_COLORS } from '../shared/player-colors.js';
 import { DEFAULT_TEAM_TARGET, TEAM_IDS, teamSeating } from '../shared/teams.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const COLORS = ['#ce6849', '#3b8292', '#d6aa46', '#688761', '#9a79a9', '#e1d5be'];
+const automaticColor = (players) => PLAYER_COLORS.find(({ value }) => !players.some(p => p.color === value)).value;
 export const DEFAULT_SETTINGS = { ...lobbyPreset(DEFAULT_PLAYER_COUNT), mode: 'individual', teamVictoryPoints: DEFAULT_TEAM_TARGET, lockDesertToCenter: false, hardHandLimit: 0, turnSeconds: 120, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
 function cleanText(value, max, fallback = '') { return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) || fallback : fallback; }
 export function validateSettings(input = {}, previous) {
@@ -177,7 +178,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       if (lobbies.size >= 200) throw Error('The server is full. Please try again later.');
       const playerName = cleanText(payload.playerName, 24); if (!playerName) throw Error('Enter your display name.');
       let id; do { id = randomBytes(5).toString('hex').slice(0, 8).toUpperCase(); } while (lobbies.has(id));
-      const lobby = { id, name: cleanText(payload.name, 48, `${playerName}’s lobby`), isPrivate: Boolean(payload.isPrivate), hostId: playerId, players: [{ id: playerId, name: playerName, color: COLORS[0], connected: true, ready: true }], settings: validateSettings(payload.settings), status: 'waiting', game: null, messages: [], createdAt: Date.now(), updatedAt: Date.now() };
+      const lobby = { id, name: cleanText(payload.name, 48, `${playerName}’s lobby`), isPrivate: Boolean(payload.isPrivate), hostId: playerId, players: [{ id: playerId, name: playerName, color: automaticColor([]), connected: true, ready: true }], settings: validateSettings(payload.settings), status: 'waiting', game: null, messages: [], createdAt: Date.now(), updatedAt: Date.now() };
       if (lobby.settings.mode === 'teams') lobby.players[0].teamId = TEAM_IDS[0];
       lobbies.set(id, lobby); memberships.set(playerId, id); emitLobby(lobby); broadcastDirectory(); return { id };
     });
@@ -188,7 +189,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       waiting(lobby); if (lobby.players.length >= lobby.settings.maxPlayers) throw Error('This lobby is full.');
       const name = cleanText(payload.playerName, 24); if (!name) throw Error('Enter your name first.');
       if (lobby.players.some(p => p.name.toLowerCase() === name.toLowerCase())) throw Error('That name is already in this lobby. Choose another.');
-      lobby.players.push({ id: playerId, name, color: COLORS.find(c => !lobby.players.some(p => p.color === c)), connected: true, ready: false, ...newPlayerTeam(lobby) });
+      lobby.players.push({ id: playerId, name, color: automaticColor(lobby.players), connected: true, ready: false, ...newPlayerTeam(lobby) });
       memberships.set(playerId, id); emitLobby(lobby); broadcastDirectory(); return { id };
     });
     on('leaveLobby', () => releasePlayer(getLobby(playerId), playerId));
@@ -198,7 +199,7 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       const difficulty = payload.difficulty ?? 'normal';
       if (!difficulties.includes(difficulty)) throw Error('Choose Easy, Normal or Hard.');
       let number = 1; while (lobby.players.some(p => p.name.toLowerCase() === `bot ${number}`)) number++;
-      lobby.players.push({ id: `bot-${randomBytes(12).toString('hex')}`, name: `Bot ${number}`, color: COLORS.find(c => !lobby.players.some(p => p.color === c)), isBot: true, difficulty, connected: false, ready: true, ...newPlayerTeam(lobby) });
+      lobby.players.push({ id: `bot-${randomBytes(12).toString('hex')}`, name: `Bot ${number}`, color: automaticColor(lobby.players), isBot: true, difficulty, connected: false, ready: true, ...newPlayerTeam(lobby) });
       resetReady(lobby); emitLobby(lobby); broadcastDirectory();
     });
     on('configureBot', payload => {
@@ -229,6 +230,14 @@ export async function createAppServer({ port = 3000, host = '0.0.0.0', productio
       if (!player) throw Error('Player not found.');
       if (player.teamId === payload.teamId) return;
       player.teamId = payload.teamId; resetReady(lobby); emitLobby(lobby);
+    });
+    on('setPlayerColor', ({ color }) => {
+      const lobby = getLobby(playerId); waiting(lobby);
+      if (!PLAYER_COLORS.some(({ value }) => value === color)) throw Error('Choose a color from the palette.');
+      const player = lobby.players.find(p => p.id === playerId);
+      if (player.color === color) return;
+      if (lobby.players.some(p => p.color === color)) throw Error('That color is already taken.');
+      player.color = color; emitLobby(lobby);
     });
     on('setReady', payload => { const lobby = getLobby(playerId); waiting(lobby); lobby.players.find(p => p.id === playerId).ready = Boolean(payload.ready); emitLobby(lobby); });
     on('startGame', () => {

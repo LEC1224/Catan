@@ -2,6 +2,7 @@ import { call, connect } from './helpers/socket-client.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAppServer, validateSettings } from '../server/index.js';
+import { PLAYER_COLORS } from '../shared/player-colors.js';
 
 test('new lobby settings default to the preset for the selected player limit', () => {
   for (const [maxPlayers, expected] of [
@@ -74,6 +75,44 @@ test('real multiplayer server: lobby privacy, authority, readiness, masked state
   assert.equal(resumed.lobby.status, 'playing');
   assert.equal((await call(a, 'chat', { text: '<script>alert(1)</script>' })).ok, true);
   assert.equal(a.lobby.messages.at(-1).text, '<script>alert(1)</script>', 'text is data for React escaping');
+});
+
+test('players can claim available colors until the match starts', async t => {
+  const server = await createAppServer({ port: 0, testMode: true, persistence: false });
+  const clients = [];
+  t.after(async () => { clients.forEach(client => client.disconnect()); await server.close(); });
+  const host = await connect(server.port); clients.push(host);
+  const guest = await connect(server.port); clients.push(guest);
+  const { id } = await call(host, 'createLobby', { playerName: 'Ada', settings: { turnSeconds: 0 } });
+  const originalHostColor = host.lobby.players[0].color;
+  const [desired, contested, later] = PLAYER_COLORS.slice(-3).map(({ value }) => value);
+  assert.equal((await call(host, 'setPlayerColor', { color: desired })).ok, true);
+  assert.equal((await call(guest, 'joinLobby', { id, playerName: 'Birch' })).ok, true);
+  assert.equal(guest.lobby.players.find(p => p.id === guest.playerId).color, originalHostColor, 'a released color can be assigned again');
+  assert.equal((await call(host, 'addBot')).ok, true);
+  const bot = host.lobby.players.find(p => p.isBot);
+  const ready = await call(guest, 'setReady', { ready: true });
+  assert.equal(ready.ok, true);
+  assert.equal((await call(guest, 'setPlayerColor', { color: '#012345' })).ok, false);
+  assert.match((await call(guest, 'setPlayerColor', { color: bot.color })).error, /already taken/);
+  assert.match((await call(guest, 'setPlayerColor', { color: desired })).error, /already taken/);
+  assert.equal(guest.lobby.players.find(p => p.id === guest.playerId).color, originalHostColor);
+
+  const claims = await Promise.all(clients.map(client => call(client, 'setPlayerColor', { color: contested })));
+  assert.equal(claims.filter(result => result.ok).length, 1, 'concurrent claims cannot share a color');
+  await Promise.all(clients.map(client => call(client, 'getDirectory')));
+  const colors = players => Object.fromEntries(players.map(p => [p.id, p.color]));
+  const rosterColors = colors(host.lobby.players);
+  assert.deepEqual(colors(guest.lobby.players), rosterColors, 'both clients see the same roster colors');
+  assert.equal(rosterColors[clients[claims.findIndex(result => result.ok)].playerId], contested);
+  assert.equal(rosterColors[bot.id], bot.color);
+  assert.equal(new Set(Object.values(rosterColors)).size, 3);
+  assert.equal(guest.lobby.players.find(p => p.id === guest.playerId).ready, true);
+
+  assert.equal((await call(host, 'startGame')).ok, true);
+  assert.deepEqual(colors(host.lobby.game.players), rosterColors);
+  assert.match((await call(guest, 'setPlayerColor', { color: later })).error, /already started/);
+  assert.deepEqual(colors(guest.lobby.game.players), rosterColors);
 });
 
 test('six clients can join, ready, start an expanded match and synchronize initial placements', async t => {

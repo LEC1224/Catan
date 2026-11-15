@@ -304,6 +304,7 @@ function App() {
           <WaitingRoom
             lobby={lobby}
             meId={meId || lobby.meId}
+            connected={connected}
             botSupport={botSupport}
             command={command}
             copyInvite={copyInvite}

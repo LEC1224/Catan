@@ -597,6 +597,45 @@
   font-size: 12px;
 }
 .add-bot-action { min-height: 34px; }
+.roster-color { margin: 0 12px 12px; }
+.roster-color-toggle { justify-content: flex-start; width: 100%; }
+.roster-color-toggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.roster-color-current { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; }
+.roster-color-chip {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #f6e3bf9c;
+  border-radius: 3px;
+  background: var(--swatch);
+}
+.roster-color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 44px));
+  grid-auto-rows: 44px;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid #62573e;
+  background: var(--front-well);
+}
+.roster-color-swatch {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #f6e3bf80;
+  border-radius: 3px;
+  background: var(--swatch);
+  box-shadow: inset 0 1px #fff3, inset 0 -2px #0004;
+  color: #fff1ca;
+}
+.roster-color-swatch[aria-pressed="true"], .roster-color-swatch:not(:disabled, [aria-disabled="true"]):hover {
+  border-color: #fff1ca;
+  box-shadow: 0 0 0 1px #fff1ca;
+}
+.roster-color-swatch:disabled { opacity: .6; }
+.roster-color-swatch[aria-disabled="true"] { cursor: not-allowed; }
+.roster-color-swatch svg { box-sizing: content-box; padding: 3px; border-radius: 50%; background: #17201b; }
 .roster-note {
   padding: 0 15px 12px;
   color: var(--front-muted);
@@ -807,6 +846,7 @@
   .directory-pips { display: none; }
   .directory-filter > button { min-height: 30px; padding-inline: 8px; }
   .directory-well, .roster-list { margin: 9px; }
+  .roster-color { margin: 0 9px 9px; }
   .roster-command { padding-inline: 9px; }
 }
 

@@ -11,6 +11,7 @@ All commands acknowledge `{ok:true, ...}` or `{ok:false,error:string}`. Browser 
 - `leaveLobby` `{}`
 - `configureLobby` `{name,isPrivate,settings}` host only
 - `setPlayerTeam` `{playerId,teamId:'a'|'b'}` host only, waiting 2v2 lobby; resets guest readiness. Start requires exactly two players on each team.
+- `setPlayerColor` `{color}` changes the caller's seat in a waiting lobby without changing readiness. The server accepts only unused hex values from `shared/player-colors.js`; selecting the caller's current color is a no-op. New seats, including bots, receive an available palette color. The match copies the lobby colors at start.
 - `setReady` `{ready}`
 - `startGame` `{}` host only (2+ players, others ready)
 - `gameAction` `{type,...payload}` invokes action(game, playerId,type,payload)

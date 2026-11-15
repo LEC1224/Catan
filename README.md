@@ -30,7 +30,7 @@ Play online at [catan.lecani.se](https://catan.lecani.se). Use that address for 
 
 ## Playing
 
-Enter a display name, create a public or private lobby, or join by invite code/link. Public rooms appear on the landing page. The creator is host and can adjust settings, remove waiting players or transfer hosting. Guests mark themselves ready; the host starts with 2–6 players. Settings changes reset guest readiness. The starting seat is chosen randomly while preserving seating order. The host can end a stalled active match and return the crew to the lobby.
+Enter a display name, create a public or private lobby, or join by invite code/link. Public rooms appear on the landing page. The creator is host and can adjust settings, remove waiting players or transfer hosting. Use **Your color** in the waiting lobby to pick from 16 colors. Each seat, including bots, starts with an available color. Colors already taken are locked in the picker, and your choice stays fixed throughout the match. Guests mark themselves ready; the host starts with 2–6 players. Settings changes reset guest readiness. The starting seat is chosen randomly while preserving seating order. The host can end a stalled active match and return the crew to the lobby.
 
 Click highlighted board corners and edges during setup. In normal turns roll, trade, build, buy/play development cards, then end your turn. Seven/discard, robber and theft prompts interrupt normal actions until resolved. The server validates every action and never sends opponents' resource identities or development cards to another player.
 
