@@ -8,6 +8,7 @@ import { bank, moveResources, playerHand, recordDeal, tile, viewCardDeals } from
 import { RESOURCES, COSTS } from '../shared/game-constants.js';
 export { RESOURCES } from '../shared/game-constants.js';
 const DEFAULTS = { maxPlayers: 4, extendedBoard: false, lockDesertToCenter: false, victoryPoints: 10, discardThreshold: 7, hardHandLimit: 0, turnSeconds: 120, friendlyRobber: false, balancedNumbers: true, unlimitedDevelopmentCards: true, unlimitedResourceCards: false, allowPlayerTrading: true, pairedTurns: true, seed: '' };
+const ACTION_TIME_BONUS_MS = 10_000;
 const emptyResources = () => Object.fromEntries(RESOURCES.map(r => [r, 0]));
 const sum = map => RESOURCES.reduce((n, r) => n + (map[r] || 0), 0);
 const fail = text => { throw new Error(text); };
@@ -28,7 +29,17 @@ function addLog(g, text, cue) {
   if (g.log.length > 120) g.log.shift();
 }
 const setDeadline = g => { g.deadline = g.settings.turnSeconds ? Date.now() + g.settings.turnSeconds * 1000 : null; };
-function phase(g, value) { g.phase = value; setDeadline(g); }
+function phase(g, value) {
+  if (g.phase === value) return;
+  g.phase = value;
+  setDeadline(g);
+}
+function extendDeadline(g) {
+  const now = Date.now();
+  if (!g.deadline || g.deadline <= now) return;
+  const fullDeadline = now + g.settings.turnSeconds * 1000;
+  if (g.deadline < fullDeadline) g.deadline = Math.min(g.deadline + ACTION_TIME_BONUS_MS, fullDeadline);
+}
 function shuffle(items, random = n => randomInt(n)) { for (let i = items.length - 1; i > 0; i--) { const j = random(i + 1); [items[i], items[j]] = [items[j], items[i]]; } return items; }
 function seededRandom(seed) {
   let state = 2166136261;
@@ -260,7 +271,7 @@ function legal(g, id) {
 function startTurn(g, index, paired = false) {
   g.activePlayerId = g.players[index].id; g.pairedPlayer = paired; g.turn++; g.developmentPlayed = false;
   g.roadBuildingRemaining = 0; g.tradeOffers = []; g.discardRequired = {}; g.stealTargets = []; g.dice = paired ? g.dice : null;
-  phase(g, paired ? 'action' : 'roll');
+  g.phase = paired ? 'action' : 'roll'; setDeadline(g);
   addLog(g, `${g.players[index].name}'s ${paired ? 'paired action' : 'turn'}.`);
   checkVictory(g);
 }
@@ -507,6 +518,11 @@ export function nextGame(game, playerId, type, payload = {}) {
     return sender && canPay(sender, offer.give);
   });
   updateScores(draft); checkVictory(draft);
+  // Card transfers include completed trades. Free roads and development plays
+  // can also earn time without transferring cards.
+  if (draft.phase === game.phase && draft.turn === game.turn &&
+      (draft.phase === 'roll' || draft.phase === 'action') &&
+      (moves.length > 0 || type === 'placeRoad' || type === 'playDevelopment')) extendDeadline(draft);
   return draft;
 }
 

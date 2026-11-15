@@ -38,7 +38,7 @@ Refresh or reconnect using the same browser to reclaim your seat. The anonymous 
 
 After a win, inspect the point breakdown, score timeline, and key moments. **Replay** opens a shared board with a timeline of turns, actions, and key moments. Click a turn or key moment to jump to it, or drag through the actions to preview moves on your board. When you release, the shared replay jumps to that step. **Results** returns only your screen to the summary; **Join replay** catches you up to the room. Review ends when the host returns the room to the lobby. Games started before recording may only have part of their history.
 
-Lobby and game sound effects start after your first interaction. If you need to discard on a seven, you hear a stronger warning. With the turn clock enabled, you hear one reminder when you have ten seconds left to make a decision. Use the speaker button in either header to mute or unmute sounds; your browser remembers the setting.
+Lobby and game sound effects start after your first interaction. If you need to discard on a seven, you hear a stronger warning. With the turn clock enabled, you hear a reminder when ten seconds remain on your decision clock. Use the speaker button in either header to mute or unmute sounds; your browser remembers the setting.
 
 ## Settings and variants
 
@@ -61,7 +61,9 @@ Lobby and game sound effects start after your first interaction. If you need to 
 | Paired turns | On | With 5–6 actual players, a second player receives an action phase without player trading |
 | Map seed | Random | Reproduce terrain/number/port setup; dice and card draws remain random |
 
-Two-player play uses ordinary core rules as a **casual house variant**, not the official neutral-settlement/trade-token two-player scenario. Choosing a small board for 5–6 is also a deliberately crowded house variant. Expanded boards and all games with 5–6 actual players use 24 cards per resource when resources are finite, and 34 cards per development deck; choosing the small board for 5–6 changes only the island. Timer expiry completes mandatory choices automatically and ends action phases; ordinary trades and builds do not refill the action-phase clock.
+With the timer on, builds, completed trades (with players, the bank, or a port), and buying or playing development cards add up to 10 seconds when play stays in the current phase. The time remaining can't exceed the configured time. Each new phase starts with the configured time. When time runs out, the game makes mandatory choices automatically or ends the action phase.
+
+Two-player play uses ordinary core rules as a **casual house variant**, not the official neutral-settlement/trade-token two-player scenario. Choosing a small board for 5–6 is also a deliberately crowded house variant. Expanded boards and all games with 5–6 actual players use 24 cards per resource when resources are finite, and 34 cards per development deck; choosing the small board for 5–6 changes only the island.
 
 **2v2:** exactly four players, two on each team. The host assigns Team A or Team B beside each player, including bots. Changing teams resets guest readiness. Teams alternate turns, so partners sit two turns apart; the starting seat is still random. The first team to reach the combined target, with each teammate at 6 or more points, wins on either teammate's turn. Hidden victory cards count toward both requirements. Live team totals show visible points only; hands and hidden points remain private even from partners. Roads, ports, piece limits and awards belong to individual players. Trades use the normal rules, and the robber and Monopoly can affect teammates. Results and replays show team totals and credit both winners.
 
