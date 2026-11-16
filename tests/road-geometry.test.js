@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { roadLayout } from '../src/road-geometry.js';
+import { ROAD_WIDTH, roadLayout } from '../src/road-geometry.js';
 
 const corner = { x: 0, y: 0 };
 const vertices = {
@@ -15,17 +15,21 @@ test('two roads flow through a corner with one shared segment boundary', () => {
   const leaving = courses.get('bc').pointAt(.001);
   assert.ok(entering.x < 0 && leaving.x > 0);
   assert.ok(Math.abs(entering.y) < .001 && Math.abs(leaving.y) < .001, 'both segments reach the corner horizontally');
-  assert.deepEqual(routes.get('red').markers.map(marker => marker.point), [corner]);
+  const { notches } = routes.get('red');
+  assert.equal(notches.length, 2);
+  assert.ok(notches.every(({ point }) => point.x === 0 && Math.abs(point.y) < ROAD_WIDTH / 2));
+  assert.ok(notches[0].point.y * notches[1].point.y < 0, 'the two notches sit on opposite shoulders of the same seam');
 });
 
-test('a three-way fork gives each entrance a mark and stays stable when the board is reordered', () => {
+test('a three-way fork marks the three shared corners without boxing in the junction', () => {
   const edges = [...chain, road('db', 'd', 'b')];
   const { routes, courses } = roadLayout(edges, vertices);
   const reversed = roadLayout([...edges].reverse(), vertices);
   for (const { id } of edges) assert.equal(courses.get(id).bed, reversed.courses.get(id).bed);
-  const { markers } = routes.get('red');
-  assert.equal(markers.length, 3);
-  assert.ok(markers.every(({ point }) => Math.hypot(point.x, point.y) > 9), 'marks sit outside the shared corner');
+  const { notches } = routes.get('red');
+  assert.equal(notches.length, 3);
+  assert.deepEqual(notches, reversed.routes.get('red').notches);
+  assert.ok(notches.every(({ point }) => Math.hypot(point.x, point.y) < ROAD_WIDTH), 'both sides of each entrance share a nearby mark');
 });
 
 test('a building keeps its own road opening while an opposing road stops short', () => {
@@ -34,5 +38,5 @@ test('a building keeps its own road opening while an opposing road stops short',
   assert.deepEqual(courses.get('ab').pointAt(1), corner);
   assert.equal(approaches.get('b').get('red').split(/ (?=M)/).length, 2);
   assert.ok(courses.get('db').pointAt(1).y < -20);
-  assert.equal(routes.get('red').markers.length, 0, 'no boundary stones cross the gate');
+  assert.equal(routes.get('red').notches.length, 0, 'no dividers cross the gate');
 });

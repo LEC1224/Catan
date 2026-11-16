@@ -1,3 +1,5 @@
+export const ROAD_WIDTH = 9.3;
+
 const unit = (x, y) => {
   const length = Math.hypot(x, y);
   return { x: x / length, y: y / length };
@@ -52,6 +54,27 @@ function junction(links) {
   return heading;
 }
 
+const notch = (vertex, outward, verge = ROAD_WIDTH / 2) => ({ point: shift(vertex, outward, verge - .55), outward });
+
+function junctionNotches(vertex, id, links, heading, courses) {
+  if (links.length === 2) {
+    return [notch(vertex, { x: -heading.y, y: heading.x }), notch(vertex, { x: heading.y, y: -heading.x })];
+  }
+  // Mark each shared inner corner once. Pairs across the individual arms would
+  // make the fork look like an extra road segment between them.
+  const angles = links.map(({ edge }) => {
+    const point = courses.get(edge.id).pointAt(edge.a === id ? .115 : .885);
+    return Math.atan2(point.y - vertex.y, point.x - vertex.x);
+  }).sort((a, b) => a - b);
+  return angles.map((angle, i) => {
+    const next = angles[i + 1] ?? angles[0] + 2 * Math.PI;
+    const halfGap = (next - angle) / 2;
+    const middle = angle + halfGap;
+    const verge = ROAD_WIDTH / (2 * Math.sin(Math.min(halfGap, Math.PI / 2)));
+    return notch(vertex, { x: Math.cos(middle), y: Math.sin(middle) }, verge);
+  });
+}
+
 export function roadLayout(edges, vertices) {
   const byOwner = new Map(), routes = new Map(), approaches = new Map(), courses = new Map();
   for (const edge of edges) {
@@ -84,15 +107,8 @@ export function roadLayout(edges, vertices) {
       if (!approaches.has(id)) approaches.set(id, new Map());
       approaches.get(id).set(owner, links.map(({ edge }) => courses.get(edge.id).bed).join(" "));
     }
-    const markers = joins.flatMap(({ id, links, heading }) => links.length === 2
-      ? [{ point: vertices[id], heading }]
-      : links.map(({ edge }) => {
-        // At a fork, put a pair of stones on each entrance, clear of the overlap.
-        const { pointAt } = courses.get(edge.id);
-        const t = edge.a === id ? .21 : .79;
-        return { point: pointAt(t), heading: direction(pointAt(t - .01), pointAt(t + .01)) };
-      }));
-    routes.set(owner, { courses: route, markers });
+    const notches = joins.flatMap(({ id, links, heading }) => junctionNotches(vertices[id], id, links, heading, courses));
+    routes.set(owner, { courses: route, notches });
   }
   return { routes, approaches, courses };
 }
