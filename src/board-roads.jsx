@@ -1,86 +1,42 @@
 import React from "react";
 
 const APRON_FILL = "#c1a176";
-const ROAD_WIDTH = 10.2;
-const ROAD_EDGE_WIDTH = 12.6;
+const ROAD_WIDTH = 9.3;
+const ROAD_EDGE_WIDTH = 11.7;
 
 export function RoadGravel({ id }) {
   return (
-    <pattern id={id} width="13" height="11" patternUnits="userSpaceOnUse">
-      <path d="M1 2l1.8-.6.9 1.2-2 .8ZM7 7l1.3-.9 1.2.8-1.7.9ZM4 10l1.1-.7.8.6-1 .6Z" fill="#6b5036" opacity=".7" />
-      <path d="M9.4 1.9l1.9.5-.5 1-1.6-.6ZM4.2 5.5l1.8-.6.5.9-1.7.6ZM11 9.8l1.4-.4v1.1l-1.6.3Z" fill="#f0d5a5" opacity=".8" />
+    <pattern id={id} width="17" height="13" patternUnits="userSpaceOnUse">
+      <path d="M1 2.5l1.2-.4.5.7-1.3.4ZM5.7 7.4l1-.5.7.5-.7.6ZM12 10.5l.7-.6 1 .3-.4.8ZM14.8 3l1.1-.5.3.6-.8.6Z" fill="#776b55" opacity=".76" />
+      <path d="M4.6 1.6l1.1-.3.4.6-.9.4ZM2.3 8.8l1-.4.5.6-1.3.4ZM10 5.3l.6-.5 1 .4-.4.6ZM15.4 8.4l.9.1-.3.7-.8-.2ZM8.5 11.7l.5-.5.9.3-.6.5Z" fill="#d9c9a6" opacity=".9" />
+      <path d="M8.4 2.8l1.2-.6.7.6-.4.8-1.4-.3ZM3.9 11.5l.8-.4.7.5-.8.7ZM12.6 7l.7-.4.7.3-.5.5ZM1 5.9l.8-.4.3.7-.8.3Z" fill="#a4967e" opacity=".86" />
     </pattern>
   );
 }
 
-function splitCurve([a, b, c, d], t) {
-  const mix = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  const ab = mix(a, b), bc = mix(b, c), cd = mix(c, d);
-  const abc = mix(ab, bc), bcd = mix(bc, cd), at = mix(abc, bcd);
-  return [[a, ab, abc, at], [at, bcd, cd, d]];
-}
-
-export function roadCourse(a, b, owner) {
-  const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy);
-  const nx = -dy / length, ny = dx / length;
-  // Opposing bends give each stretch a slight S while keeping both corners fixed.
-  const phase = Math.sin((a.x + b.x) * .089 + (a.y + b.y) * .069);
-  const bend = (phase < 0 ? -1 : 1) * (14 + 5 * Math.abs(phase));
-  const point = (t, offset) => ({ x: a.x + dx * t + nx * offset, y: a.y + dy * t + ny * offset });
-  let segment = [a, point(.26, bend), point(.74, -bend), b];
-  // Stop at another player's piece so its own road can reach the corner unobstructed.
-  const setback = ({ building }) => building && building.owner !== owner
-    ? Math.min(.47, (building.type === "city" ? 28 : 24) / length) : 0;
-  const start = setback(a), end = 1 - setback(b);
-  if (end < 1) [segment] = splitCurve(segment, end);
-  if (start > 0) [, segment] = splitCurve(segment, start / end);
-  const curve = (offset = 0) => {
-    const [p0, p1, p2, p3] = segment.map(({ x, y }) => `${(x + nx * offset).toFixed(2)},${(y + ny * offset).toFixed(2)}`);
-    return `M${p0}C${p1} ${p2} ${p3}`;
-  };
-  return {
-    bed: curve(),
-    ruts: [-1.9, 1.9].map(curve).join(" "),
-    pointAt: t => splitCurve(segment, t)[0][3],
-  };
-}
-
-function RoadSurface({ courses, color, gravel }) {
+function RoadSurface({ courses, markers = [], color, gravel }) {
   const bed = courses.map(course => course.bed).join(" ");
-  const ruts = courses.map(course => course.ruts).join(" ");
+  const stones = markers.map(({ point: { x, y }, heading }) => {
+    const at = offset => `${(x - heading.y * offset).toFixed(2)},${(y + heading.x * offset).toFixed(2)}`;
+    const shoulder = ROAD_WIDTH / 2;
+    return `M${at(shoulder - 1)}L${at(shoulder + 1.15)} M${at(1 - shoulder)}L${at(-shoulder - 1.15)}`;
+  }).join(" ");
   return (
     <g className="board-road" fill="none" strokeLinecap="round" pointerEvents="none" aria-hidden="true">
       <path d={bed} stroke="#211b14" strokeWidth={ROAD_EDGE_WIDTH} opacity=".82" transform="translate(0 1.25)" />
       <path d={bed} stroke="#514332" strokeWidth={ROAD_EDGE_WIDTH} />
       <path d={bed} stroke={color || "#bb8b59"} strokeWidth={ROAD_WIDTH} />
-      <path d={ruts} stroke="#312518" strokeWidth=".85" opacity=".33" />
-      <path d={bed} stroke={`url(#${gravel})`} strokeWidth={ROAD_WIDTH} opacity=".5" />
+      <path d={bed} stroke="#392b1b" strokeWidth="4.5" opacity=".12" />
+      <path d={bed} stroke={`url(#${gravel})`} strokeWidth={ROAD_WIDTH} opacity=".8" />
+      {stones && <path d={stones} stroke="#e7d8b7" strokeWidth="1.65" />}
     </g>
   );
 }
 
-export function roadLayout(edges, vertices) {
-  const routes = new Map();
-  const approaches = new Map();
-  for (const { owner, a, b } of edges) {
-    if (!owner) continue;
-    const course = roadCourse(vertices[a], vertices[b], owner);
-    if (!routes.has(owner)) routes.set(owner, []);
-    routes.get(owner).push(course);
-    for (const end of [a, b]) {
-      if (!approaches.has(end)) approaches.set(end, new Map());
-      const byOwner = approaches.get(end);
-      if (!byOwner.has(owner)) byOwner.set(owner, []);
-      byOwner.get(owner).push(course.bed);
-    }
-  }
-  return { routes, approaches };
-}
-
 export function RoadNetwork({ routes, colors, gravel }) {
   // Paint each material pass across the route so adjoining edges share a roadbed.
-  return [...routes].map(([owner, courses]) =>
-    <RoadSurface key={owner} courses={courses} color={colors[owner]?.color} gravel={gravel} />);
+  return [...routes].map(([owner, { courses, markers }]) =>
+    <RoadSurface key={owner} courses={courses} markers={markers} color={colors[owner]?.color} gravel={gravel} />);
 }
 
 export function RoadPreview({ course, color, gravel }) {

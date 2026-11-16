@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { roadCourse } from "./board-roads.jsx";
 import "./build-effects.css";
 
 export const SETTLEMENT_LANDING_MS = 500;
@@ -19,13 +18,13 @@ const CLOUDS = [
   [0, 5, 9, 2, -11, 0, 620],
 ];
 
-function newPlacements(before, board, vertices) {
+function newPlacements(before, board, courses) {
   const oldRoads = new Set(before.edges.filter(edge => edge.owner).map(edge => edge.id));
   const oldBuildings = new Map(before.vertices.map(vertex => [vertex.id, vertex.building?.type]));
   const placements = [];
   for (const edge of board.edges) {
     if (!edge.owner || oldRoads.has(edge.id)) continue;
-    const { pointAt } = roadCourse(vertices[edge.a], vertices[edge.b], edge.owner);
+    const { pointAt } = courses.get(edge.id);
     placements.push({
       key: `road:${edge.id}`, kind: "road", delay: 0, size: .62,
       points: [.29, .71].map(pointAt),
@@ -65,7 +64,7 @@ function BuildPuff({ impact, pigment, done }) {
   );
 }
 
-export function BuildDust({ board, vertices, stream, meId }) {
+export function BuildDust({ board, courses, stream, meId }) {
   const previous = useRef(null);
   const pigment = useId();
   const [impacts, setImpacts] = useState([]);
@@ -80,12 +79,12 @@ export function BuildDust({ board, vertices, stream, meId }) {
       return;
     }
     if (last.board === board || document.hidden || matchMedia(REDUCE_MOTION).matches) return;
-    const next = newPlacements(last.board, board, vertices);
+    const next = newPlacements(last.board, board, courses);
     for (const impact of next) {
       if (impact.kind === "settlement" && impact.owner === meId) impact.delay = settlementContactDelay();
     }
     if (next.length) setImpacts(current => [...current, ...next]);
-  }, [board, vertices, stream, meId]);
+  }, [board, courses, stream, meId]);
 
   if (!impacts.length) return null;
   return (

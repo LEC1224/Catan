@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Anchor, Minus, Plus, RotateCcw } from "lucide-react";
 import { boardScenery, HOME_CAMERA, moveCamera, productionPips, terrainVariants } from "./board-layout.js";
-import { BuildingApron, RoadGravel, RoadNetwork, RoadOpening, RoadPreview, roadCourse, roadLayout } from "./board-roads.jsx";
+import { BuildingApron, RoadGravel, RoadNetwork, RoadOpening, RoadPreview } from "./board-roads.jsx";
+import { roadCourse, roadLayout } from "./road-geometry.js";
 import { BuildDust, SETTLEMENT_CONTACT_MS, SETTLEMENT_LANDING_MS, settlementContactDelay } from "./build-effects.jsx";
 import { BuildPreview, CityUpgradePreview } from "./build-preview.jsx";
 import { RobberHexMark } from "./robber-guide.jsx";
@@ -220,12 +221,12 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
   const colors = Object.fromEntries(game.players.map((p, i) => [p.id, {
     color: p.color, filter: `${ids}-roof-${i}`, outline: `${outline}-${i}`, rim: `${rim}-${i}`,
   }]));
-  const { routes, approaches } = roadLayout(edges, vertices);
+  const { routes, approaches, courses } = useMemo(() => roadLayout(edges, vertices), [edges, vertices]);
   const renderPiece = (kind, owner, v) => {
     const player = colors[owner];
     return (
       <Building type={kind} filter={player?.filter} clip={`${ids}-shape-${kind}`} outline={player?.outline ?? outline}
-        rim={player?.rim ?? rim} gravel={gravel} approach={approaches.get(v.id)?.get(owner)?.join(" ")} x={v.x} y={v.y} />
+        rim={player?.rim ?? rim} gravel={gravel} approach={approaches.get(v.id)?.get(owner)} x={v.x} y={v.y} />
     );
   };
   const isActive = game.activePlayerId === meId, legal = game.legal || {};
@@ -350,7 +351,7 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
           </g>
         );
       })}
-      {stream != null && <BuildDust board={game.board} vertices={vertices} stream={stream} meId={meId} />}
+      {stream != null && <BuildDust board={game.board} courses={courses} stream={stream} meId={meId} />}
     </>
   );
 }
