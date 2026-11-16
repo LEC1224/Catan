@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Anchor, Minus, Plus, RotateCcw } from "lucide-react";
 import { boardScenery, HOME_CAMERA, moveCamera, productionPips, terrainVariants } from "./board-layout.js";
-import { BuildingApron, RoadGravel, RoadNetwork, RoadOpening, RoadPreview } from "./board-roads.jsx";
+import { BuildingApron, PavementGravel, RoadGravel, RoadNetwork, RoadOpening, RoadPreview } from "./board-roads.jsx";
 import { roadCourse, roadLayout } from "./road-geometry.js";
 import { BuildDust, SETTLEMENT_CONTACT_MS, SETTLEMENT_LANDING_MS, settlementContactDelay } from "./build-effects.jsx";
 import { BuildPreview, CityUpgradePreview } from "./build-preview.jsx";
@@ -215,6 +215,7 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
   const outline = `${ids}-piece-outline`;
   const rim = `${ids}-piece-rim`;
   const gravel = `${ids}-road-gravel`;
+  const pavement = `${ids}-pavement-gravel`;
   const { polygons, shore, ports } = scenery;
   const { hexes, edges, vertices: boardVertices } = game.board;
   const vertices = useMemo(() => Object.fromEntries(boardVertices.map(v => [v.id, v])), [boardVertices]);
@@ -243,6 +244,7 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
     <>
       <defs>
         <RoadGravel id={gravel} />
+        <PavementGravel id={pavement} base={gravel} />
         <PieceOutline id={outline} withArt />
         <PieceOutline id={rim} />
         <filter id={`${ids}-shoals`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="9" /></filter>
@@ -295,7 +297,7 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
         );
       })}
       {ports.map((port) => <Harbor key={port.id} port={port} resourceMeta={resourceMeta} />)}
-      <RoadNetwork routes={routes} colors={colors} gravel={gravel} />
+      <RoadNetwork routes={routes} colors={colors} gravel={pavement} />
       {edges.filter((e) => roads.has(e.id) && !landing.has(e.a) && !landing.has(e.b)).map((e) => {
         const a = vertices[e.a], b = vertices[e.b], choose = () => onAction("placeRoad", { edgeId: e.id });
         const course = roadCourse(a, b, meId);
@@ -306,7 +308,7 @@ function BoardScene({ game, stream, meId, mode, canBuild, busy, onAction, resour
             <BuildPreview key={e.id} onBuild={choose} hit={
               <line x1={a.x + dx} y1={a.y + dy} x2={b.x - dx} y2={b.y - dy} stroke="transparent" strokeWidth="24" />
             }>
-              <RoadPreview course={course} color={colors[meId].color} gravel={gravel} />
+              <RoadPreview course={course} color={colors[meId].color} gravel={pavement} />
             </BuildPreview>
           );
         }

@@ -15,6 +15,20 @@ export function RoadGravel({ id }) {
   );
 }
 
+export function PavementGravel({ id, base }) {
+  return (
+    <pattern id={id} width="17" height="13" patternUnits="userSpaceOnUse">
+      <rect width="17" height="13" fill={`url(#${base})`} />
+      <path d="M5.8 3.4l.9-.7.6.5-.2.7-.9.2ZM12 8.7l.9-.4.5.4-.2.6-1 .2ZM9 1.2l.6-.4.7.2-.2.6-1.1.1ZM2 10.8l.6-.5.8.2-.2.6-.9.1ZM15.1 5.3l.8-.5.4.7-.9.4Z" fill="#ab9173" opacity=".94" />
+      <path d="M3.4 6.3l.7-.5.8.2.1.5-.8.3-.7-.2ZM10.4 10.7l.8-.4.7.3-.4.6-.9.1ZM13.1 4.7l.7-.3.5.5-.5.5-.7-.2ZM5.7 11.4l.8-.3.4.5-.7.4ZM.8 8.8l.6-.2.4.5-.8.2Z" fill="#a8a294" opacity=".9" />
+      <path d="M2.8 1.2h.25M5 2.5h.18M6.1 .6h.18M8.1 4.9h.24M9.3 6.7h.17M10.8 1.8h.19M13.2 2.7h.14M14.6 1.4h.15M16.1 2.3h.23M2.8 5.1h.19M6.4 6h.13M7.8 7.8h.21M11.5 6.8h.16M13.9 7.2h.19M16.2 6.6h.14M.7 7.5h.18M4.1 8.4h.19M3.5 10.15h.15M6.4 10h.14M8.8 9.4h.17M10.7 8.3h.16M13.7 10.1h.2M14.5 11.5h.22M16.1 9.9h.19M6.8 12.1h.2M10.2 12.25h.19M2.1 12.3h.16Z"
+        fill="none" stroke="#d3b88c" strokeWidth=".49" strokeLinecap="round" opacity=".77" />
+      <path d="M2.3 3.3h.22M4.5 4.4h.2M7.1 1.6h.18M9.3 4.3h.14M11.8 1.4h.23M12.2 6h.17M14.7 4.3h.17M16.4 4.1h.18M5.4 8.8h.13M8.4 6.2h.22M9.4 10h.14M11.3 9.6h.17M14.1 8.8h.15M6.5 8.8h.2M7.2 11.05h.15M15.1 12.4h.22M3.4 12.5h.21M.6 11.1h.22"
+        fill="none" stroke="#6b5c48" strokeWidth=".54" strokeLinecap="round" opacity=".72" />
+    </pattern>
+  );
+}
+
 function RoadSurface({ courses, notches = [], color, gravel }) {
   const bed = courses.map(course => course.bed).join(" ");
   const seams = notches.map(({ point: { x, y }, outward }) =>
