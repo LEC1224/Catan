@@ -1,6 +1,7 @@
 import React, { useId } from "react";
 import { Check, Handshake, Undo2, X } from "lucide-react";
 import { playerTradesAvailable } from "../shared/trades.js";
+import { CardFace } from "./match-hand.jsx";
 import { shortcutProps } from "./match-shortcuts.jsx";
 
 function TradeSide({ side, cards, types, meta }) {
@@ -10,12 +11,13 @@ function TradeSide({ side, cards, types, meta }) {
       <span id={labelId}>{side === "get" ? "You get" : "You give"}</span>
       <ul className="trade-resources" aria-labelledby={labelId}>
         {types.filter((type) => cards[type] > 0).map((type) => {
-          const { icon: Icon, name, color } = meta[type];
-          const label = `${cards[type]} ${name}`;
+          const count = cards[type];
+          const resource = meta[type];
+          const label = `${count} ${resource.name}`;
           return (
-            <li key={type} title={label} style={{ "--trade-resource": color }}>
-              <Icon size={15} aria-hidden="true" />
-              <span aria-hidden="true">{cards[type]}</span>
+            <li key={type} title={label}>
+              <CardFace card={resource} kind="resource" />
+              {count > 1 && <span className="card-quantity" aria-hidden="true">{count}</span>}
               <span className="visually-hidden">{label}</span>
             </li>
           );
